@@ -1,9 +1,20 @@
 name: Release
 
 on:
+  # Tags pushed by a person (or a PAT) trigger this directly.
   push:
     tags:
       - 'v*'
+  # Tags created by tag.yml are pushed with GITHUB_TOKEN, which never triggers
+  # other workflows, so tag.yml calls this workflow explicitly instead.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions: {}
 
 jobs:
   release:
@@ -11,13 +22,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
-
       - name: Create GitHub Release
         uses: actions/github-script@v9
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
         with:
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = process.env.TAG;
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
