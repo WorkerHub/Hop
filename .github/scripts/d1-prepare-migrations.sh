@@ -56,7 +56,19 @@ if has_table _schema_migrations; then
   applied="$(d1_query "SELECT name FROM _schema_migrations")"
 fi
 if [[ -z "$applied" ]]; then
-  echo "::warning::Tables exist but no migration history was found; assuming schema_v1 (0001_init.sql) is in place."
+  # No history: only assume schema_v1 if the full 0001_init.sql schema is
+  # really there, rather than marking it applied on a partial/drifted schema.
+  for t in users passkeys links click_logs verifications settings audit_logs totp_used; do
+    if ! has_table "$t"; then
+      echo "::error::Tables exist but no migration history was found, and table '$t' from 0001_init.sql is missing; refusing to baseline."
+      exit 1
+    fi
+  done
+  if ! d1_query "SELECT name FROM pragma_table_info('links')" | grep -qx user_seq; then
+    echo "::error::Tables exist but no migration history was found, and links.user_seq from 0001_init.sql is missing; refusing to baseline."
+    exit 1
+  fi
+  echo "::warning::Tables exist but no migration history was found; the 0001_init.sql schema is present, baselining it as schema_v1."
   applied="schema_v1"
 fi
 
