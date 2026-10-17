@@ -38,6 +38,12 @@ migrations_dir = "migrations"
     WRANGLER_SEND_METRICS: 'false',
     D1_LOCATION: 'local',
     GITHUB_OUTPUT: join(cwd, 'outputs'),
+    // pnpm 11's default `verify-deps-before-run=install` makes `pnpm exec
+    // wrangler` re-check deps and, in this fixture (a bare package.json with a
+    // symlinked node_modules and no lockfile), run an install that writes
+    // "Already up to date" / "Done in … using pnpm" to stdout — polluting
+    // `wrangler d1 execute --json`. Disable the check so stdout stays clean.
+    pnpm_config_verify_deps_before_run: 'false',
   };
   const run = (command, args, extraEnv = {}) =>
     execFileSync(command, args, {
