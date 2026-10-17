@@ -6,7 +6,7 @@ import {
   sha256,
   verifyPassword,
 } from '../lib/crypto.js';
-import { tbl } from '../lib/db.js';
+import { isUniqueConstraintError, tbl } from '../lib/db.js';
 import {
   otpEmailHtml,
   resetPasswordEmailHtml,
@@ -236,17 +236,33 @@ auth.post('/register', async (c) => {
 
   const passwordHash = await hashPassword(password);
 
+  // BE-C3: The SELECT above is only a fast path — a concurrent registration with
+  // the same email/username can slip between it and the INSERT. The UNIQUE
+  // constraints are the real guard; report their violation as 409, not 500.
+  type NewUser = { id: string; email: string; username: string; role: string };
+  const insertUser = async (sql: string): Promise<NewUser | null | 'taken'> => {
+    try {
+      return await c.env.DB.prepare(sql)
+        .bind(email, username, passwordHash)
+        .first<NewUser>();
+    } catch (err) {
+      if (isUniqueConstraintError(err)) return 'taken';
+      throw err;
+    }
+  };
+
   // If email verification is required (non-first user only), create account as inactive
   // and send a verification code before the user can log in.
   if (!isFirstUser && (await isEmailVerificationRequired(c.env))) {
-    const newUser = await c.env.DB.prepare(
+    const newUser = await insertUser(
       `INSERT INTO ${tbl(c.env, 'users')} (email, username, password_hash, role, is_active)
        VALUES (?1, ?2, ?3, 'user', 0)
        RETURNING id, email, username, role`,
-    )
-      .bind(email, username, passwordHash)
-      .first<{ id: string; email: string; username: string; role: string }>();
+    );
 
+    if (newUser === 'taken') {
+      return c.json({ error: 'Email or username already taken' }, 409);
+    }
     if (!newUser) return c.json({ error: 'Failed to create user' }, 500);
 
     const code = generateOtp(6);
@@ -282,14 +298,15 @@ auth.post('/register', async (c) => {
   }
 
   // H3: Role assigned atomically inside SQL — prevents bootstrap race condition
-  const result = await c.env.DB.prepare(
+  const result = await insertUser(
     `INSERT INTO ${tbl(c.env, 'users')} (email, username, password_hash, role)
      VALUES (?1, ?2, ?3, CASE WHEN (SELECT COUNT(*) FROM ${tbl(c.env, 'users')}) = 0 THEN 'admin' ELSE 'user' END)
      RETURNING id, email, username, role`,
-  )
-    .bind(email, username, passwordHash)
-    .first<{ id: string; email: string; username: string; role: string }>();
+  );
 
+  if (result === 'taken') {
+    return c.json({ error: 'Email or username already taken' }, 409);
+  }
   if (!result) return c.json({ error: 'Failed to create user' }, 500);
 
   return c.json(
@@ -541,19 +558,22 @@ auth.post('/refresh', async (c) => {
   const refreshToken = getRefreshCookie(c);
   if (!refreshToken) return c.json({ error: 'Unauthorized' }, 401);
 
+  // FE-R1: Only a bad token is a 401 (and clears the cookie). The client treats
+  // 401 as "session over", so KV/D1 failures must not be reported that way.
+  let payload: Awaited<ReturnType<typeof verifyRefreshToken>>;
   try {
-    const payload = await verifyRefreshToken(refreshToken, c.env.JWT_SECRET);
+    payload = await verifyRefreshToken(refreshToken, c.env.JWT_SECRET);
+  } catch {
+    clearRefreshCookie(c);
+    return c.json({ error: 'Invalid or expired refresh token' }, 401);
+  }
 
+  try {
     // C-2: Check denylist BEFORE rotating — prevents use of already-revoked tokens
     if (await isJtiDenylisted(c.env.LINKS_KV, payload.jti)) {
       clearRefreshCookie(c);
       return c.json({ error: 'Unauthorized' }, 401);
     }
-
-    // S1: Compute remaining TTL from token's actual exp claim
-    const refreshTtl =
-      Math.max(payload.exp - Math.floor(Date.now() / 1000), 0) + 60;
-    await denylistJti(c.env.LINKS_KV, payload.jti, refreshTtl);
 
     const user = await c.env.DB.prepare(
       `SELECT * FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
@@ -569,12 +589,19 @@ auth.post('/refresh', async (c) => {
       return c.json({ error: 'Unauthorized' }, 401);
     }
 
+    // Rotate only after every read succeeded, so a D1 failure can't burn a
+    // still-valid refresh token. S1: TTL from the token's actual exp claim.
+    const refreshTtl =
+      Math.max(payload.exp - Math.floor(Date.now() / 1000), 0) + 60;
+    await denylistJti(c.env.LINKS_KV, payload.jti, refreshTtl);
+
     const tokens = await issueTokens(user, c.env.JWT_SECRET);
     setRefreshCookie(c, tokens.refreshToken);
     return c.json({ accessToken: tokens.accessToken });
-  } catch {
-    clearRefreshCookie(c);
-    return c.json({ error: 'Invalid or expired refresh token' }, 401);
+  } catch (err) {
+    // Infrastructure failure: keep the cookie, report a retryable 503.
+    console.error('refresh failed', err instanceof Error ? err.name : err);
+    return c.json({ error: 'Service temporarily unavailable' }, 503);
   }
 });
 

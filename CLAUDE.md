@@ -18,6 +18,7 @@ The Worker serves both the API (`/api/*`) and the compiled frontend, so there is
 pnpm dev          # turbo: runs both worker dev + web dev concurrently
 pnpm build        # turbo: typecheck + build web
 pnpm typecheck    # turbo: tsc --noEmit on both packages
+pnpm test         # turbo: worker unit tests (node --test, apps/worker/test/*.test.ts)
 pnpm deploy       # turbo: builds web then deploys worker
 ```
 

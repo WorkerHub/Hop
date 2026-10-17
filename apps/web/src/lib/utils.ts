@@ -36,6 +36,24 @@ export function expiryLabel(expiresAt: number | null): string {
   return `${Math.floor(diff / 86400)}d remaining`;
 }
 
+// FE-C2: <input type="datetime-local"> shows and parses wall-clock time in the
+// browser's local time zone, so its value must be formatted locally too —
+// toISOString() is UTC and shifted the expiry by the UTC offset on every edit.
+export function toDatetimeLocalValue(ts: number | null): string {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Inverse of toDatetimeLocalValue: a local "YYYY-MM-DDTHH:mm" string to a Unix
+// timestamp in seconds, or null when empty/invalid.
+export function fromDatetimeLocalValue(value: string): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+}
+
 export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }

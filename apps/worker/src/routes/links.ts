@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { tbl } from '../lib/db.js';
 import { deleteCachedLink } from '../lib/kv.js';
+import { parsePagination } from '../lib/params.js';
 import { generateSlug, isReservedSlug, isValidSlug } from '../lib/slug.js';
 import { requireAuth } from '../middleware/auth.js';
 import type { Env, LinkRow, Variables } from '../types.js';
@@ -35,13 +36,12 @@ async function getUniqueSlug(
 // ─────────────────────────────────────────────────────────────────────────────
 links.get('/', async (c) => {
   const userId = c.get('userId');
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10));
-  const limit = Math.min(
+  const { page, limit, offset } = parsePagination(
+    c.req.query('page'),
+    c.req.query('limit'),
     50,
-    Math.max(1, parseInt(c.req.query('limit') ?? '20', 10)),
   );
   const search = c.req.query('search')?.trim() ?? '';
-  const offset = (page - 1) * limit;
 
   let query: string;
   let countQuery: string;

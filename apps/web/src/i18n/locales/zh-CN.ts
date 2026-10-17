@@ -22,6 +22,7 @@ export const zhCN: Translations = {
     no: '否',
     user: '用户',
     admin: '管理员',
+    retry: '重试',
   },
   nav: {
     links: '链接',
@@ -77,6 +78,9 @@ export const zhCN: Translations = {
     verificationCode: '验证码',
     accountCreated: '账户已创建！请登录。',
     verifyCodeResent: '验证码已重新发送。',
+    emailVerifiedSignIn: '邮箱已验证，请登录。',
+    sessionRestoreFailed: '无法连接服务器以恢复登录状态，请检查网络后重试。',
+    configLoadFailed: '无法加载站点配置，请检查网络后重试。',
   },
   links: {
     title: '我的链接',

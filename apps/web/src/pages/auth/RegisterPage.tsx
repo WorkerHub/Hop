@@ -24,8 +24,13 @@ type Step = 'form' | 'verify';
 export default function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { registrationEnabled } = useAppConfig();
-  const { refreshUser, broadcastRefresh } = useAuth();
+  const {
+    registrationEnabled,
+    isLoading: configLoading,
+    loadFailed: configLoadFailed,
+    reload: reloadConfig,
+  } = useAppConfig();
+  const { refreshUser, broadcastRefresh, setPendingState } = useAuth();
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -35,9 +40,12 @@ export default function RegisterPage() {
   const [code, setCode] = useState('');
   const { countdown, start: startCountdown } = useCountdown();
 
+  // FE-R3: Decide only once /api/config has answered — the provider's initial
+  // `registrationEnabled = false` used to bounce every direct visit to /login.
   useEffect(() => {
+    if (configLoading || configLoadFailed) return;
     if (!registrationEnabled) navigate('/login', { replace: true });
-  }, [registrationEnabled, navigate]);
+  }, [configLoading, configLoadFailed, registrationEnabled, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,12 +72,22 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const result = await authApi.verifyEmail(userId, code);
-      if (result.accessToken) {
-        setAccessToken(result.accessToken);
-        broadcastRefresh();
+      // FE-C4: Only a response carrying an access token is a signed-in session;
+      // anything else would land on /dashboard and be bounced to /login.
+      if (result.requiresTwoFactor && result.pendingToken && result.methods) {
+        setPendingState(result.pendingToken, result.methods);
+        navigate('/two-factor', { replace: true });
+        return;
       }
+      if (!result.accessToken) {
+        toast.success(t('auth.emailVerifiedSignIn'));
+        navigate('/login', { replace: true });
+        return;
+      }
+      setAccessToken(result.accessToken);
+      broadcastRefresh();
       await refreshUser();
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Verification failed');
     } finally {
@@ -90,6 +108,42 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  if (step === 'form' && (configLoading || configLoadFailed)) {
+    return (
+      <AuthCard>
+        <CardHeader>
+          <CardTitle className="text-2xl">{t('auth.createAccount')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {configLoading ? (
+            <p className="text-sm text-muted-foreground">
+              {t('common.loading')}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-destructive" role="alert">
+                {t('auth.configLoadFailed')}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={reloadConfig}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          )}
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            <Link to="/login" className="text-primary hover:underline">
+              {t('auth.backToLogin')}
+            </Link>
+          </p>
+        </CardContent>
+      </AuthCard>
+    );
+  }
 
   if (step === 'verify') {
     return (
