@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { tbl } from './lib/db.js';
 import { getCachedSetting, setCachedSetting } from './lib/kv.js';
+import { API_CSP, SPA_CSP, securityHeaders } from './lib/security.js';
 import { RESERVED_SLUGS } from './lib/slug.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
@@ -13,21 +14,34 @@ import type { Env, Variables } from './types.js';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+// ─── Request ID + structured error handling (BE-Q3) ───────────────────────────
+app.use('*', async (c, next) => {
+  c.set('requestId', crypto.randomUUID());
+  await next();
+});
+
+// BE-Q3: log unhandled errors with structured fields (path, error name,
+// requestId) and never leak internal details to the client.
+app.onError((err, c) => {
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      path: c.req.path,
+      method: c.req.method,
+      error: err instanceof Error ? err.name : typeof err,
+      requestId: c.get('requestId'),
+    }),
+  );
+  return c.json({ error: 'Internal Server Error' }, 500);
+});
+
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use('/api/*', async (c, next) => {
   await next();
-  c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-  c.header(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'",
-  );
-  if (c.env.APP_URL.startsWith('https')) {
-    c.header(
-      'Strict-Transport-Security',
-      'max-age=63072000; includeSubDomains',
-    );
+  for (const [k, v] of Object.entries(
+    securityHeaders(c.env.APP_URL, API_CSP),
+  )) {
+    c.header(k, v);
   }
 });
 
@@ -35,11 +49,14 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', async (c, next) => {
   const handler = cors({
     origin: (origin) => {
-      const allowed = [
-        c.env.APP_URL,
-        'http://localhost:5173',
-        'http://localhost:4173',
-      ];
+      const allowed = [c.env.APP_URL];
+      // BE-S10: allow the Vite dev-server origins only when the Worker itself is
+      // served over plain http (wrangler dev on localhost). Production is always
+      // https, so a page served from a localhost port cannot ride the CORS
+      // allow-list against the deployed API.
+      if (new URL(c.req.url).protocol === 'http:') {
+        allowed.push('http://localhost:5173', 'http://localhost:4173');
+      }
       return allowed.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -112,7 +129,18 @@ app.get('/:slug', async (c, next) => {
 });
 
 // Fallback — forward all unmatched requests to Workers Assets (SPA + static files)
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.url) as unknown as Response);
+app.all('*', async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.url);
+  // BE-S11: the /api/* middleware above does not cover SPA/static responses, so
+  // attach security headers (including a Vite-compatible CSP) here.
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(
+    securityHeaders(c.env.APP_URL, SPA_CSP),
+  )) {
+    headers.set(k, v);
+  }
+  return new Response(res.body, { status: res.status, headers });
+});
 
 export default {
   fetch: app.fetch,

@@ -1,5 +1,6 @@
-import { connect } from 'cloudflare:sockets';
-
+// `cloudflare:sockets` is imported lazily inside sendViaSMTP so that importing
+// this module under Node (unit tests) does not fail to resolve a
+// Cloudflare-only module specifier. The runtime (workerd) provides it.
 export interface SmtpConfig {
   host: string;
   port: number;
@@ -48,6 +49,7 @@ export async function sendViaSMTP(
 ): Promise<void> {
   const isImplicitTls = config.port === 465;
 
+  const { connect } = await import('cloudflare:sockets');
   const socket = connect({ hostname: config.host, port: config.port }, {
     secureTransport: isImplicitTls ? 'on' : 'off',
     allowHalfOpen: true,

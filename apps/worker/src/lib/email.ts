@@ -87,8 +87,14 @@ export async function sendEmail(
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Resend error ${res.status}: ${text}`);
+    // BE-R2: don't fold the upstream response body into the error — it can echo
+    // SMTP/credential configuration. Log a redacted summary (status only) and
+    // throw a generic error so nothing sensitive reaches the client or the logs.
+    console.error('sendEmail failed', {
+      provider: 'resend',
+      status: res.status,
+    });
+    throw new Error(`Resend request failed with status ${res.status}`);
   }
 }
 

@@ -260,7 +260,9 @@ export const authApi = {
 
   // TOTP
   totpSetup: () =>
-    request<{ secret: string; uri: string }>('/auth/2fa/totp/setup'),
+    request<{ secret: string; uri: string }>('/auth/2fa/totp/setup', {
+      method: 'POST',
+    }),
   totpConfirm: (code: string) =>
     request<{ success: boolean; backupCodes: string[] }>(
       '/auth/2fa/totp/confirm',

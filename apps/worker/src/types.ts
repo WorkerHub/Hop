@@ -29,6 +29,7 @@ export interface Variables {
   userEmail: string;
   userJti: string;
   userTokenExp: number; // S1: used to compute exact denylist TTL from token expiry
+  requestId: string; // BE-Q3: set per request for structured error logging
 }
 
 // ─── DB row types ────────────────────────────────────────────────────────────

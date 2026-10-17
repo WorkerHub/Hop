@@ -288,6 +288,14 @@ auth.post('/register', async (c) => {
       );
     }
 
+    // BE-C4: delete any previous unused code for this identifier before storing
+    // the new one, so a user always has at most one pending code of each type.
+    await c.env.DB.prepare(
+      `DELETE FROM ${tbl(c.env, 'verifications')} WHERE identifier = ?1 AND type = 'email_verify' AND used = 0`,
+    )
+      .bind(newUser.id)
+      .run();
+
     await c.env.DB.prepare(
       `INSERT INTO ${tbl(c.env, 'verifications')} (identifier, type, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)`,
     )
@@ -695,8 +703,10 @@ auth.post('/change-password', requireAuth, async (c) => {
 // 2FA — TOTP
 // ═════════════════════════════════════════════════════════════════════════════
 
-// GET /api/auth/2fa/totp/setup
-auth.get('/2fa/totp/setup', requireAuth, async (c) => {
+// POST /api/auth/2fa/totp/setup
+// BE-S12: POST (not GET) — the endpoint has a write side effect (it regenerates
+// and overwrites totp_secret), so GET semantics were wrong.
+auth.post('/2fa/totp/setup', requireAuth, async (c) => {
   const userId = c.get('userId');
   const userEmail = c.get('userEmail');
 
@@ -1640,33 +1650,45 @@ auth.post('/forgot-password', async (c) => {
 
   if (!user) return c.json({ success: true }); // silent — no enumeration
 
-  const code = generateOtp(6);
-  const codeHash = await sha256(code);
-  const expiresAt = Math.floor(Date.now() / 1000) + 600;
-  const appName = await getAppName(c.env);
+  // BE-S9: send the reset email out-of-band so the response time no longer
+  // reveals whether the address is registered (previously the send happened
+  // inline, so an existing address took hundreds of ms longer to respond).
+  c.executionCtx.waitUntil(
+    (async () => {
+      const code = generateOtp(6);
+      const codeHash = await sha256(code);
+      const expiresAt = Math.floor(Date.now() / 1000) + 600;
+      const appName = await getAppName(c.env);
 
-  try {
-    await sendEmail(c.env, {
-      to: email,
-      subject: `${appName} — Password Reset`,
-      html: resetPasswordEmailHtml(appName, code),
-    });
-  } catch {
-    return c.json({ error: 'Failed to send email. Please try again.' }, 500);
-  }
+      try {
+        await sendEmail(c.env, {
+          to: email,
+          subject: `${appName} — Password Reset`,
+          html: resetPasswordEmailHtml(appName, code),
+        });
+      } catch (err) {
+        // BE-R2: log only a redacted form — never the upstream response body.
+        console.error(
+          'forgot-password email failed',
+          err instanceof Error ? err.name : typeof err,
+        );
+        return;
+      }
 
-  // Invalidate any previous unused reset codes for this email
-  await c.env.DB.prepare(
-    `DELETE FROM ${tbl(c.env, 'verifications')} WHERE identifier = ?1 AND type = 'password_reset' AND used = 0`,
-  )
-    .bind(email)
-    .run();
+      // Invalidate any previous unused reset codes for this email
+      await c.env.DB.prepare(
+        `DELETE FROM ${tbl(c.env, 'verifications')} WHERE identifier = ?1 AND type = 'password_reset' AND used = 0`,
+      )
+        .bind(email)
+        .run();
 
-  await c.env.DB.prepare(
-    `INSERT INTO ${tbl(c.env, 'verifications')} (identifier, type, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)`,
-  )
-    .bind(email, 'password_reset', codeHash, expiresAt)
-    .run();
+      await c.env.DB.prepare(
+        `INSERT INTO ${tbl(c.env, 'verifications')} (identifier, type, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)`,
+      )
+        .bind(email, 'password_reset', codeHash, expiresAt)
+        .run();
+    })(),
+  );
 
   return c.json({ success: true });
 });
