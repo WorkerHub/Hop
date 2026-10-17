@@ -10,6 +10,7 @@ import {
 import {
   authApi,
   type LoginResult,
+  refreshSession,
   setAccessToken,
   type User,
 } from '../api/client.ts';
@@ -63,15 +64,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     channel?.addEventListener('message', (e: MessageEvent<ChannelMsg>) => {
       if (e.data?.type === 'refresh') {
-        // Another tab logged in or refreshed — obtain our own token via the
-        // HttpOnly refresh cookie instead of receiving one over the channel.
-        authApi
-          .refresh()
-          .then((d) => {
-            setAccessToken(d.accessToken);
+        // Another tab logged in — obtain our own token via the HttpOnly refresh
+        // cookie instead of receiving one over the channel. Serialized across
+        // tabs (Web Locks) so concurrent refreshes don't rotate each other out.
+        refreshSession()
+          .then((token) => {
+            if (!token) return;
+            setAccessToken(token);
             return authApi.me();
           })
-          .then((d) => setUser(d.user))
+          .then((d) => {
+            if (d) setUser(d.user);
+          })
           .catch(() => {});
       } else if (e.data?.type === 'logout') {
         // Another tab logged out — mirror the logout in this tab
@@ -82,10 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       try {
-        const data = await authApi.refresh();
-        setAccessToken(data.accessToken);
-        // Signal sibling tabs to refresh their own session (no token broadcast)
-        channel?.postMessage({ type: 'refresh' } satisfies ChannelMsg);
+        const token = await refreshSession();
+        if (!token) return;
+        setAccessToken(token);
         await refreshUser();
       } catch {
         // No valid session — user needs to log in

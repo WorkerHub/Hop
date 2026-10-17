@@ -19,7 +19,9 @@ function maskSecrets(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(settings)) {
-    out[k] = SECRET_SETTING_KEYS.has(k) ? SECRET_MASK : v;
+    // Only mask configured (non-empty) secrets — an empty value means "not set",
+    // so it must stay empty rather than read as "***" (= already set) by the UI.
+    out[k] = SECRET_SETTING_KEYS.has(k) && v !== '' ? SECRET_MASK : v;
   }
   return out;
 }
@@ -379,7 +381,15 @@ admin.put('/settings', async (c) => {
     'smtp_from',
   ]);
 
-  const updates = Object.entries(body).filter(([k]) => allowedKeys.has(k));
+  // FE-S3/BE-S1: An empty or masked ("***") secret means "leave unchanged".
+  // Never write those back — an empty string would wipe the credential, and a
+  // "***" literal would be stored as the real password.
+  const updates = Object.entries(body)
+    .filter(([k]) => allowedKeys.has(k))
+    .filter(
+      ([k, v]) =>
+        !SECRET_SETTING_KEYS.has(k) || (v !== '' && v !== SECRET_MASK),
+    );
   if (updates.length === 0)
     return c.json({ error: 'No valid settings keys provided' }, 400);
 
