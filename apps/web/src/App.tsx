@@ -1,6 +1,8 @@
 import { lazy, type ReactNode, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Button } from './components/ui/button.tsx';
 import { useAuth } from './contexts/AuthContext.tsx';
+import { useTranslation } from './i18n/index.tsx';
 
 const AdminLayout = lazy(() => import('./components/layout/AdminLayout.tsx'));
 const DashboardLayout = lazy(
@@ -27,23 +29,45 @@ function PageFallback() {
   );
 }
 
+// FE-R1: Shown instead of the login redirect when the session could not be
+// restored for a transient reason — the refresh cookie may still be valid.
+function SessionRestoreFailed() {
+  const { retryRestore } = useAuth();
+  const { t } = useTranslation();
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 text-center">
+      <p className="text-sm text-muted-foreground" role="alert">
+        {t('auth.sessionRestoreFailed')}
+      </p>
+      <Button type="button" onClick={retryRestore}>
+        {t('common.retry')}
+      </Button>
+      <Link to="/login" className="text-sm text-primary hover:underline">
+        {t('auth.signInLink')}
+      </Link>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, restoreFailed } = useAuth();
   if (isLoading) return <PageFallback />;
+  if (!user && restoreFailed) return <SessionRestoreFailed />;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function AdminRoute({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, restoreFailed } = useAuth();
   if (isLoading) return <PageFallback />;
+  if (!user && restoreFailed) return <SessionRestoreFailed />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
 export default function App() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, restoreFailed } = useAuth();
 
   return (
     <Suspense fallback={<PageFallback />}>
@@ -91,7 +115,10 @@ export default function App() {
             isLoading ? (
               <PageFallback />
             ) : (
-              <Navigate to={user ? '/dashboard' : '/login'} replace />
+              <Navigate
+                to={user || restoreFailed ? '/dashboard' : '/login'}
+                replace
+              />
             )
           }
         />

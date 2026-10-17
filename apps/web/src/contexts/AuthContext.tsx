@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   authApi,
+  getAccessToken,
   type LoginResult,
   refreshSession,
   setAccessToken,
@@ -20,6 +21,10 @@ import {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  // FE-R1: The initial session restore could not reach the server (offline,
+  // 5xx). The refresh cookie may still be valid, so this is not "logged out".
+  restoreFailed: boolean;
+  retryRestore: () => void;
   pendingToken: string | null;
   pendingMethods: string[];
   login: (email: string, password: string) => Promise<LoginResult>;
@@ -41,6 +46,7 @@ type ChannelMsg = { type: 'refresh' } | { type: 'logout' };
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [restoreFailed, setRestoreFailed] = useState(false);
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [pendingMethods, setPendingMethods] = useState<string[]>([]);
   // H-1: BroadcastChannel for cross-tab login/logout coordination (signal only)
@@ -70,7 +76,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // On mount, try to restore session via HttpOnly refresh cookie (H4)
+  // Restore the session via the HttpOnly refresh cookie (H4). A transient
+  // failure sets `restoreFailed` instead of treating the user as logged out.
+  const restoreSession = useCallback(async () => {
+    try {
+      const outcome = await refreshSession();
+      setRestoreFailed(outcome === 'transient');
+      if (outcome !== 'ok') return;
+      try {
+        const data = await authApi.me();
+        setUser(data.user);
+      } catch {
+        // A rejected session clears the access token (handleSessionExpired);
+        // if it is still set, /me failed for a transient reason.
+        if (getAccessToken()) setRestoreFailed(true);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const retryRestore = useCallback(() => {
+    setIsLoading(true);
+    void restoreSession();
+  }, [restoreSession]);
+
+  // Retry automatically once the browser reports it is back online.
+  useEffect(() => {
+    if (!restoreFailed) return;
+    window.addEventListener('online', retryRestore);
+    return () => window.removeEventListener('online', retryRestore);
+  }, [restoreFailed, retryRestore]);
+
+  // On mount, open the cross-tab channel and restore the session
   useEffect(() => {
     // Open channel before init so we don't miss a sibling tab's token broadcast
     const channel =
@@ -85,13 +123,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // cookie instead of receiving one over the channel. Serialized across
         // tabs (Web Locks) so concurrent refreshes don't rotate each other out.
         refreshSession()
-          .then((token) => {
-            if (!token) return;
-            setAccessToken(token);
+          .then((outcome) => {
+            if (outcome !== 'ok') return;
             return authApi.me();
           })
           .then((d) => {
-            if (d) setUser(d.user);
+            if (!d) return;
+            setUser(d.user);
+            setRestoreFailed(false);
           })
           .catch(() => {});
       } else if (e.data?.type === 'logout') {
@@ -101,25 +140,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    const init = async () => {
-      try {
-        const token = await refreshSession();
-        if (!token) return;
-        setAccessToken(token);
-        await refreshUser();
-      } catch {
-        // No valid session — user needs to log in
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    init();
+    void restoreSession();
 
     return () => {
       channel?.close();
       channelRef.current = null;
     };
-  }, [refreshUser]);
+  }, [restoreSession]);
 
   const login = useCallback(
     async (email: string, password: string): Promise<LoginResult> => {
@@ -128,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(result.accessToken);
         // H4: refresh token is set as HttpOnly cookie by the server — no localStorage
         setUser(result.user);
+        setRestoreFailed(false);
         channelRef.current?.postMessage({
           type: 'refresh',
         } satisfies ChannelMsg);
@@ -168,6 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
+        restoreFailed,
+        retryRestore,
         pendingToken,
         pendingMethods,
         login,

@@ -79,6 +79,7 @@ export const zhCN: Translations = {
     accountCreated: '账户已创建！请登录。',
     verifyCodeResent: '验证码已重新发送。',
     emailVerifiedSignIn: '邮箱已验证，请登录。',
+    sessionRestoreFailed: '无法连接服务器以恢复登录状态，请检查网络后重试。',
     configLoadFailed: '无法加载站点配置，请检查网络后重试。',
   },
   links: {

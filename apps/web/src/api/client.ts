@@ -106,7 +106,7 @@ async function request<T>(
 //     rotating the refresh token out from under one another.
 // FE-R1: 'transient' (network failure, 5xx, 408/429) says nothing about the
 // session; only 'expired' — the server rejected the refresh cookie — ends it.
-type RefreshOutcome = 'ok' | 'expired' | 'transient';
+export type RefreshOutcome = 'ok' | 'expired' | 'transient';
 
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
@@ -157,11 +157,10 @@ async function _doRefresh(): Promise<RefreshOutcome> {
 }
 
 // Serialized silent refresh for the BroadcastChannel 'refresh' handler and the
-// initial session restore — returns the new access token, or null when there is
-// no valid session.
-export async function refreshSession(): Promise<string | null> {
-  const outcome = await tryRefresh();
-  return outcome === 'ok' ? getAccessToken() : null;
+// initial session restore. On 'ok' the new access token is already set; callers
+// must keep 'transient' distinct from 'expired' (FE-R1).
+export function refreshSession(): Promise<RefreshOutcome> {
+  return tryRefresh();
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────

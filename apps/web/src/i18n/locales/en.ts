@@ -79,6 +79,8 @@ export const en = {
     accountCreated: 'Account created! Please sign in.',
     verifyCodeResent: 'Verification code resent.',
     emailVerifiedSignIn: 'Email verified. Please sign in.',
+    sessionRestoreFailed:
+      "Couldn't reach the server to restore your session. Check your connection and try again.",
     configLoadFailed:
       "Couldn't load site settings. Check your connection and try again.",
   },
