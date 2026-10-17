@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { OtpInput } from '@/components/ui/otp-input';
 import { useCountdown } from '@/hooks/use-countdown';
 import { useTranslation } from '@/i18n';
+import { RESEND_COUNTDOWN_SECONDS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 
 type Step = 'email' | 'code' | 'password';
 
@@ -42,7 +44,7 @@ export default function ForgotPasswordPage() {
       setLoading(false);
     }
     setCode('');
-    startCountdown(600);
+    startCountdown(RESEND_COUNTDOWN_SECONDS);
     setStep('code');
   };
 
@@ -54,7 +56,7 @@ export default function ForgotPasswordPage() {
       await authApi.verifyResetCode(email, code);
       setStep('password');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Invalid code');
+      toastApiError(err, t('toast.invalidCode'));
     } finally {
       setLoading(false);
     }
@@ -73,9 +75,7 @@ export default function ForgotPasswordPage() {
       toast.success(t('auth.resetSuccess'));
       navigate('/login');
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to reset password',
-      );
+      toastApiError(err, t('toast.resetPasswordFailed'));
     } finally {
       setLoading(false);
     }

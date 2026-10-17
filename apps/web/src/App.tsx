@@ -1,8 +1,9 @@
 import { lazy, type ReactNode, Suspense } from 'react';
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Button } from './components/ui/button.tsx';
 import { useAuth } from './contexts/AuthContext.tsx';
 import { useTranslation } from './i18n/index.tsx';
+import { buildLoginRedirect } from './lib/utils.ts';
 
 const AdminLayout = lazy(() => import('./components/layout/AdminLayout.tsx'));
 const DashboardLayout = lazy(
@@ -51,17 +52,32 @@ function SessionRestoreFailed() {
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, isLoading, restoreFailed } = useAuth();
+  const location = useLocation();
   if (isLoading) return <PageFallback />;
   if (!user && restoreFailed) return <SessionRestoreFailed />;
-  if (!user) return <Navigate to="/login" replace />;
+  // FE-R5: remember where the user was so signing in returns them there.
+  if (!user)
+    return (
+      <Navigate
+        to={buildLoginRedirect(location.pathname, location.search)}
+        replace
+      />
+    );
   return <>{children}</>;
 }
 
 function AdminRoute({ children }: { children: ReactNode }) {
   const { user, isLoading, restoreFailed } = useAuth();
+  const location = useLocation();
   if (isLoading) return <PageFallback />;
   if (!user && restoreFailed) return <SessionRestoreFailed />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user)
+    return (
+      <Navigate
+        to={buildLoginRedirect(location.pathname, location.search)}
+        replace
+      />
+    );
   if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }

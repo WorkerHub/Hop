@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { BarChart2, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -18,7 +18,9 @@ import { type AnalyticsStats, analyticsApi, linksApi } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useTranslation } from '@/i18n';
+import { SEARCH_DEBOUNCE_MS } from '@/lib/constants';
 import { isSafeUrl } from '@/lib/utils';
 
 const COLORS = [
@@ -30,22 +32,56 @@ const COLORS = [
   '#a855f7',
 ];
 
+const DAY_OPTIONS = [7, 14, 30, 90] as const;
+type DayOption = (typeof DAY_OPTIONS)[number];
+
+function isDayOption(value: number): value is DayOption {
+  return (DAY_OPTIONS as readonly number[]).includes(value);
+}
+
 export default function AnalyticsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
 
-  // If navigated from Links page with a linkId, pre-select that link
-  const initialLinkId = searchParams.get('linkId') ?? '';
-  const [selectedLinkId, setSelectedLinkId] = useState(initialLinkId);
+  // FE-C5: the selection lives in the URL, so browser back/forward (and links
+  // shared between tabs) restore the same link and range instead of only the
+  // values present on the first render.
+  const selectedLinkId = searchParams.get('linkId') ?? '';
+  const daysParam = Number(searchParams.get('days'));
+  const days: DayOption = isDayOption(daysParam) ? daysParam : 30;
   const [slugSearch, setSlugSearch] = useState('');
-  const [days, setDays] = useState(30);
+  const debouncedSlugSearch = useDebouncedValue(slugSearch, SEARCH_DEBOUNCE_MS);
+
+  const updateParams = useCallback(
+    (
+      updates: { linkId?: string | null; days?: DayOption },
+      replace = false,
+    ) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (updates.linkId === null) next.delete('linkId');
+          else if (updates.linkId !== undefined)
+            next.set('linkId', updates.linkId);
+          if (updates.days !== undefined)
+            next.set('days', String(updates.days));
+          return next;
+        },
+        { replace },
+      );
+    },
+    [setSearchParams],
+  );
 
   // Search links by slug to allow selection
   const { data: searchResults } = useQuery({
-    queryKey: ['links-search', slugSearch],
+    queryKey: ['links-search', debouncedSlugSearch],
     queryFn: () =>
-      linksApi.list({ search: slugSearch || undefined, limit: 10 }),
-    enabled: slugSearch.length > 0,
+      linksApi.list({
+        search: debouncedSlugSearch || undefined,
+        limit: 10,
+      }),
+    enabled: debouncedSlugSearch.length > 0,
   });
 
   // If arrived with linkId, fetch just that link's details (to show slug in input)
@@ -85,14 +121,25 @@ export default function AnalyticsPage() {
     );
   }, [slugSearch, searchResults]);
 
+  // Keep the search box in step when back/forward changes the selected link.
+  useEffect(() => {
+    if (!selectedLinkId) {
+      setSlugSearch('');
+      return;
+    }
+    if (selectedLinkData?.link.id === selectedLinkId) {
+      setSlugSearch(selectedLinkData.link.slug);
+    }
+  }, [selectedLinkId, selectedLinkData]);
+
   const handleSelectLink = (linkId: string, slug: string) => {
-    setSelectedLinkId(linkId);
+    updateParams({ linkId });
     setSlugSearch(slug);
     setShowDropdown(false);
   };
 
   const handleClearLink = () => {
-    setSelectedLinkId('');
+    updateParams({ linkId: null }, true);
     setSlugSearch('');
   };
 
@@ -109,7 +156,7 @@ export default function AnalyticsPage() {
             value={slugSearch}
             onChange={(e) => {
               setSlugSearch(e.target.value);
-              if (!e.target.value) setSelectedLinkId('');
+              if (!e.target.value) updateParams({ linkId: null }, true);
             }}
             className="pl-9 pr-8"
           />
@@ -141,12 +188,12 @@ export default function AnalyticsPage() {
           )}
         </div>
         <div className="flex gap-1">
-          {([7, 14, 30, 90] as const).map((d) => (
+          {DAY_OPTIONS.map((d) => (
             <Button
               key={d}
               size="sm"
               variant={days === d ? 'default' : 'outline'}
-              onClick={() => setDays(d)}
+              onClick={() => updateParams({ days: d })}
             >
               {d}d
             </Button>

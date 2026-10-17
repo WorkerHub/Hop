@@ -3,6 +3,7 @@ import { Search, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { adminApi } from '@/api/client';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +17,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useTranslation } from '@/i18n';
+import { SEARCH_DEBOUNCE_MS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 import { formatDate } from '@/lib/utils';
 
 export default function AdminUsersPage() {
@@ -24,13 +28,15 @@ export default function AdminUsersPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-users', page, search],
-    queryFn: () => adminApi.users({ page, search: search || undefined }),
+    queryKey: ['admin-users', page, debouncedSearch],
+    queryFn: () =>
+      adminApi.users({ page, search: debouncedSearch || undefined }),
   });
 
   const updateMutation = useMutation({
@@ -43,22 +49,29 @@ export default function AdminUsersPage() {
     }) => adminApi.updateUser(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User updated');
+      toast.success(t('toast.userUpdated'));
     },
-    onError: (err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed'),
+    onError: (err) => toastApiError(err, t('toast.updateUserFailed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteUser(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User deleted');
+      toast.success(t('toast.userDeleted'));
       setDeleteId(null);
     },
-    onError: (err) =>
-      toast.error(err instanceof Error ? err.message : 'Failed'),
+    onError: (err) => toastApiError(err, t('toast.deleteUserFailed')),
   });
+
+  // FE-C5: one mutation in flight at a time per row — a double click used to
+  // fire two racing PATCH/DELETE requests with conflicting payloads.
+  const updatePendingId = updateMutation.isPending
+    ? updateMutation.variables?.id
+    : undefined;
+  const deletePendingId = deleteMutation.isPending
+    ? deleteMutation.variables
+    : undefined;
 
   return (
     <div className="p-6">
@@ -126,7 +139,9 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <select
                       value={u.role}
-                      disabled={u.id === currentUser?.id}
+                      disabled={
+                        u.id === currentUser?.id || updatePendingId === u.id
+                      }
                       onChange={(e) =>
                         updateMutation.mutate({
                           id: u.id,
@@ -161,14 +176,16 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <button
                       type="button"
-                      disabled={u.id === currentUser?.id}
+                      disabled={
+                        u.id === currentUser?.id || updatePendingId === u.id
+                      }
                       onClick={() =>
                         updateMutation.mutate({
                           id: u.id,
                           payload: { isActive: !u.is_active },
                         })
                       }
-                      className="cursor-pointer"
+                      className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Badge variant={u.is_active ? 'success' : 'destructive'}>
                         {u.is_active
@@ -185,7 +202,9 @@ export default function AdminUsersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        disabled={u.id === currentUser?.id}
+                        disabled={
+                          u.id === currentUser?.id || deletePendingId === u.id
+                        }
                         onClick={() => setDeleteId(u.id)}
                         className="text-destructive hover:text-destructive"
                       >
@@ -236,26 +255,16 @@ export default function AdminUsersPage() {
         }}
       />
 
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('admin.deleteUser')}</DialogTitle>
-            <DialogDescription>{t('admin.deleteUserDesc')}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleteMutation.isPending}
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-            >
-              {t('common.delete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(o) => !o && setDeleteId(null)}
+        title={t('admin.deleteUser')}
+        description={t('admin.deleteUserDesc')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+      />
     </div>
   );
 }
@@ -285,11 +294,11 @@ function CreateUserDialog({
     setLoading(true);
     try {
       await adminApi.createUser(form);
-      toast.success('User created');
+      toast.success(t('toast.userCreated'));
       setForm({ email: '', username: '', password: '', role: 'user' });
       onCreated();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create user');
+      toastApiError(err, t('toast.createUserFailed'));
     } finally {
       setLoading(false);
     }
