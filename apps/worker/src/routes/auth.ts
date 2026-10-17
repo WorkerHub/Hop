@@ -1655,12 +1655,26 @@ auth.post('/forgot-password', async (c) => {
   // inline, so an existing address took hundreds of ms longer to respond).
   c.executionCtx.waitUntil(
     (async () => {
-      const code = generateOtp(6);
-      const codeHash = await sha256(code);
-      const expiresAt = Math.floor(Date.now() / 1000) + 600;
-      const appName = await getAppName(c.env);
-
       try {
+        const code = generateOtp(6);
+        const codeHash = await sha256(code);
+        const expiresAt = Math.floor(Date.now() / 1000) + 600;
+
+        // Persist the code BEFORE sending, so a user never receives a code that
+        // failed to store. Invalidate any previous unused reset codes first.
+        await c.env.DB.prepare(
+          `DELETE FROM ${tbl(c.env, 'verifications')} WHERE identifier = ?1 AND type = 'password_reset' AND used = 0`,
+        )
+          .bind(email)
+          .run();
+
+        await c.env.DB.prepare(
+          `INSERT INTO ${tbl(c.env, 'verifications')} (identifier, type, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)`,
+        )
+          .bind(email, 'password_reset', codeHash, expiresAt)
+          .run();
+
+        const appName = await getAppName(c.env);
         await sendEmail(c.env, {
           to: email,
           subject: `${appName} — Password Reset`,
@@ -1669,24 +1683,10 @@ auth.post('/forgot-password', async (c) => {
       } catch (err) {
         // BE-R2: log only a redacted form — never the upstream response body.
         console.error(
-          'forgot-password email failed',
+          'forgot-password background task failed',
           err instanceof Error ? err.name : typeof err,
         );
-        return;
       }
-
-      // Invalidate any previous unused reset codes for this email
-      await c.env.DB.prepare(
-        `DELETE FROM ${tbl(c.env, 'verifications')} WHERE identifier = ?1 AND type = 'password_reset' AND used = 0`,
-      )
-        .bind(email)
-        .run();
-
-      await c.env.DB.prepare(
-        `INSERT INTO ${tbl(c.env, 'verifications')} (identifier, type, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)`,
-      )
-        .bind(email, 'password_reset', codeHash, expiresAt)
-        .run();
     })(),
   );
 

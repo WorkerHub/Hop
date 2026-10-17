@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { renderMigrationFiles } from '../scripts/generate-migrations.ts';
@@ -43,4 +44,15 @@ test('迁移名与文件名遵循 schema_vN <-> NNNN_*.sql 约定 (BE-Q1)', () =
     );
     assert.match(migration.fileName, /^\d{4}_.+\.sql$/);
   }
+});
+
+// The wrangler migration files must keep their original fail-if-exists
+// semantics (no IF NOT EXISTS / OR IGNORE), so re-applying one to an already
+// migrated database errors instead of silently skipping — wrangler tracks
+// applied migrations and this error is the guard against schema drift.
+test('无前缀 wrangler 迁移在对象已存在时仍报错，保留原语义 (BE-Q1)', () => {
+  const files = renderMigrationFiles();
+  const db = new DatabaseSync(':memory:');
+  db.exec(files['0001_init.sql']);
+  assert.throws(() => db.exec(files['0001_init.sql']), /already exists/);
 });

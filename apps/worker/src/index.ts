@@ -50,11 +50,15 @@ app.use('/api/*', async (c, next) => {
   const handler = cors({
     origin: (origin) => {
       const allowed = [c.env.APP_URL];
-      // BE-S10: allow the Vite dev-server origins only when the Worker itself is
-      // served over plain http (wrangler dev on localhost). Production is always
-      // https, so a page served from a localhost port cannot ride the CORS
-      // allow-list against the deployed API.
-      if (new URL(c.req.url).protocol === 'http:') {
+      // BE-S10: allow the Vite dev-server origins only when the Worker is reached
+      // over plain http on a loopback host (i.e. wrangler dev). A deployed Worker
+      // is served from a real hostname, so neither condition holds in production.
+      const url = new URL(c.req.url);
+      const isLoopback =
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '::1';
+      if (url.protocol === 'http:' && isLoopback) {
         allowed.push('http://localhost:5173', 'http://localhost:4173');
       }
       return allowed.includes(origin) ? origin : null;

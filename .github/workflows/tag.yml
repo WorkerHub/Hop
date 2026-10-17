@@ -52,32 +52,31 @@ jobs:
       - name: Verify main CI passed
         uses: actions/github-script@v9
         env:
-          WORKFLOW_NAME: CI
+          WORKFLOW_FILE: ci.yml
         with:
           script: |
             const { stdout } = await exec.getExecOutput('git', ['rev-parse', 'HEAD']);
             const sha = stdout.trim();
             core.info(`Checking CI status for main@${sha}`);
-            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+            // Filter by workflow file (not the repo-wide list) so this very tag
+            // workflow run is not mistaken for CI, and only accept a push run.
+            const { data } = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: process.env.WORKFLOW_NAME,
+              workflow_id: process.env.WORKFLOW_FILE,
               head_sha: sha,
-              per_page: 10,
+              event: 'push',
             });
-            const runs = data.workflow_runs;
-            if (runs.length === 0) {
-              core.setFailed(`No CI run found for main@${sha}; run CI on main before tagging.`);
-              return;
-            }
-            const latest = runs[0];
-            if (latest.status !== 'completed' || latest.conclusion !== 'success') {
+            const ciRun = data.workflow_runs.find(
+              (run) => run.status === 'completed' && run.conclusion === 'success',
+            );
+            if (!ciRun) {
               core.setFailed(
-                `CI for main@${sha} is ${latest.status}/${latest.conclusion}; tag only after a successful CI run.`,
+                `No successful CI (push) run found for main@${sha}; run CI on main before tagging.`,
               );
               return;
             }
-            core.info(`CI for main@${sha} succeeded (run ${latest.id}).`);
+            core.info(`CI for main@${sha} succeeded (run ${ciRun.id}).`);
 
       - name: Configure Git
         run: |
