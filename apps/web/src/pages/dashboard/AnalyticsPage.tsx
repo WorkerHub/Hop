@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
+import { isSafeUrl } from '@/lib/utils';
 
 const COLORS = [
   '#6366f1',
@@ -165,14 +166,19 @@ export default function AnalyticsPage() {
             {selectedLinkData.link.slug}
           </span>
           {' → '}
-          <a
-            href={selectedLinkData.link.destination_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            {selectedLinkData.link.destination_url}
-          </a>
+          {/* FE-S2: Only render as a link when the protocol is http/https */}
+          {isSafeUrl(selectedLinkData.link.destination_url) ? (
+            <a
+              href={selectedLinkData.link.destination_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {selectedLinkData.link.destination_url}
+            </a>
+          ) : (
+            <span>{selectedLinkData.link.destination_url}</span>
+          )}
         </div>
       )}
 

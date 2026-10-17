@@ -69,6 +69,8 @@ export async function sendEmail(
     );
   }
 
+  // BE-R1: Abort the fetch if Resend doesn't respond within 10s so registration
+  // / reset flows don't hang on a stalled upstream.
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -81,6 +83,7 @@ export async function sendEmail(
       subject: payload.subject,
       html: payload.html,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

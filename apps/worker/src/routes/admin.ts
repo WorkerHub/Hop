@@ -9,6 +9,23 @@ const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 admin.use('*', requireAdmin);
 
+// BE-S1: Setting keys that hold secrets. They must never be written in plaintext
+// to the audit log, nor returned in plaintext by GET /settings.
+const SECRET_SETTING_KEYS = new Set(['smtp_pass', 'resend_api_key']);
+const SECRET_MASK = '***';
+
+function maskSecrets(
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(settings)) {
+    // Only mask configured (non-empty) secrets — an empty value means "not set",
+    // so it must stay empty rather than read as "***" (= already set) by the UI.
+    out[k] = SECRET_SETTING_KEYS.has(k) && v !== '' ? SECRET_MASK : v;
+  }
+  return out;
+}
+
 // ─── Audit log helper (L7) ────────────────────────────────────────────────────
 
 async function auditLog(
@@ -214,6 +231,12 @@ admin.patch('/users/:id', async (c) => {
     sets.push(`role = ?${vals.push(body.role)}`);
   }
 
+  // BE-S4: Deactivating or changing a user's role revokes all of their sessions
+  // immediately by bumping token_version (checked on every request + refresh).
+  if (body.isActive === false || body.role !== undefined) {
+    sets.push('token_version = token_version + 1');
+  }
+
   if (sets.length === 1) return c.json({ error: 'Nothing to update' }, 400);
 
   vals.push(id);
@@ -331,7 +354,9 @@ admin.get('/settings', async (c) => {
   const settings = Object.fromEntries(
     rows.results.map((r) => [r.key, r.value]),
   );
-  return c.json({ settings });
+  // BE-S1: Never return secret values in plaintext — replace with a mask so the
+  // admin UI can show "already set" without exposing the credential.
+  return c.json({ settings: maskSecrets(settings) });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +381,15 @@ admin.put('/settings', async (c) => {
     'smtp_from',
   ]);
 
-  const updates = Object.entries(body).filter(([k]) => allowedKeys.has(k));
+  // FE-S3/BE-S1: An empty or masked ("***") secret means "leave unchanged".
+  // Never write those back — an empty string would wipe the credential, and a
+  // "***" literal would be stored as the real password.
+  const updates = Object.entries(body)
+    .filter(([k]) => allowedKeys.has(k))
+    .filter(
+      ([k, v]) =>
+        !SECRET_SETTING_KEYS.has(k) || (v !== '' && v !== SECRET_MASK),
+    );
   if (updates.length === 0)
     return c.json({ error: 'No valid settings keys provided' }, 400);
 
@@ -443,7 +476,8 @@ admin.put('/settings', async (c) => {
   );
 
   await auditLog(c.env, adminId, 'update_settings', 'settings', {
-    updates: Object.fromEntries(updates),
+    // BE-S1: Mask secrets so they never land in the audit log in plaintext.
+    updates: maskSecrets(Object.fromEntries(updates)),
   });
 
   return c.json({ success: true });

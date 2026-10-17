@@ -10,6 +10,7 @@ import {
 import {
   authApi,
   type LoginResult,
+  refreshSession,
   setAccessToken,
   type User,
 } from '../api/client.ts';
@@ -21,7 +22,7 @@ interface AuthContextType {
   pendingMethods: string[];
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
-  broadcastLogin: (accessToken: string) => void;
+  broadcastRefresh: () => void;
   setPendingState: (token: string, methods: string[]) => void;
   clearPendingState: () => void;
   refreshUser: () => Promise<void>;
@@ -29,14 +30,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-type ChannelMsg = { type: 'token'; accessToken: string } | { type: 'logout' };
+// FE-S1: The channel carries only a signal, never a token. Any same-origin script
+// (XSS, malicious extension) could listen on BroadcastChannel and steal a token
+// sent through it, so tokens stay out — each tab fetches its own via the HttpOnly
+// refresh cookie.
+type ChannelMsg = { type: 'refresh' } | { type: 'logout' };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [pendingMethods, setPendingMethods] = useState<string[]>([]);
-  // H-1: BroadcastChannel for cross-tab token/logout coordination
+  // H-1: BroadcastChannel for cross-tab login/logout coordination (signal only)
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   const refreshUser = useCallback(async () => {
@@ -58,12 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     channelRef.current = channel;
 
     channel?.addEventListener('message', (e: MessageEvent<ChannelMsg>) => {
-      if (e.data?.type === 'token') {
-        // Another tab refreshed — adopt the new token and fetch the user
-        setAccessToken(e.data.accessToken);
-        authApi
-          .me()
-          .then((d) => setUser(d.user))
+      if (e.data?.type === 'refresh') {
+        // Another tab logged in — obtain our own token via the HttpOnly refresh
+        // cookie instead of receiving one over the channel. Serialized across
+        // tabs (Web Locks) so concurrent refreshes don't rotate each other out.
+        refreshSession()
+          .then((token) => {
+            if (!token) return;
+            setAccessToken(token);
+            return authApi.me();
+          })
+          .then((d) => {
+            if (d) setUser(d.user);
+          })
           .catch(() => {});
       } else if (e.data?.type === 'logout') {
         // Another tab logged out — mirror the logout in this tab
@@ -74,13 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       try {
-        const data = await authApi.refresh();
-        setAccessToken(data.accessToken);
-        // Broadcast so sibling tabs avoid their own refresh round-trip
-        channel?.postMessage({
-          type: 'token',
-          accessToken: data.accessToken,
-        } satisfies ChannelMsg);
+        const token = await refreshSession();
+        if (!token) return;
+        setAccessToken(token);
         await refreshUser();
       } catch {
         // No valid session — user needs to log in
@@ -104,8 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // H4: refresh token is set as HttpOnly cookie by the server — no localStorage
         setUser(result.user);
         channelRef.current?.postMessage({
-          type: 'token',
-          accessToken: result.accessToken,
+          type: 'refresh',
         } satisfies ChannelMsg);
       }
       return result;
@@ -125,11 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     channelRef.current?.postMessage({ type: 'logout' } satisfies ChannelMsg);
   }, []);
 
-  const broadcastLogin = useCallback((accessToken: string) => {
-    channelRef.current?.postMessage({
-      type: 'token',
-      accessToken,
-    } satisfies ChannelMsg);
+  const broadcastRefresh = useCallback(() => {
+    channelRef.current?.postMessage({ type: 'refresh' } satisfies ChannelMsg);
   }, []);
 
   const setPendingState = useCallback((token: string, methods: string[]) => {
@@ -151,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         pendingMethods,
         login,
         logout,
-        broadcastLogin,
+        broadcastRefresh,
         setPendingState,
         clearPendingState,
         refreshUser,

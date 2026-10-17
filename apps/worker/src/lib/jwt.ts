@@ -37,10 +37,11 @@ export async function signAccessToken(
 
 export async function signRefreshToken(
   sub: string,
+  tv: number,
   secret: string,
 ): Promise<{ token: string; jti: string }> {
   const jti = newJti();
-  const token = await new SignJWT({ sub, purpose: 'refresh', jti })
+  const token = await new SignJWT({ sub, tv, purpose: 'refresh', jti })
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(REFRESH_TOKEN_TTL)
     .setIssuedAt()

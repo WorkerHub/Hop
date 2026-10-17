@@ -91,7 +91,7 @@ shortlink/
 │   │   │   │   ├── analytics.ts  # Per-link and summary click analytics (D1 batch queries)
 │   │   │   │   ├── admin.ts      # Admin: user mgmt, link mgmt, settings
 │   │   │   │   ├── redirect.ts   # /:slug redirect + async click logging
-│   │   │   │   └── setup.ts      # /setup/:secret — HTTP-triggered DB migration (schema_v1)
+│   │   │   │   └── setup.ts      # POST /setup — HTTP-triggered DB migration (schema_v1 + schema_v2)
 │   │   │   ├── middleware/
 │   │   │   │   └── auth.ts       # requireAuth and requireAdmin middleware (JWT verification)
 │   │   │   └── lib/
@@ -161,7 +161,11 @@ Stored AES-256-GCM encrypted in D1. The encryption key (`TOTP_ENCRYPTION_KEY`) i
 | `link:{slug}` | Short link cache | 21600s (6h) |
 | `passkey_challenge:{id}` | WebAuthn challenge | 300s |
 | `otp_rate:{email}` | Email OTP rate limit (also used by forgot-password) | 600s |
-| `login_attempts:{email}` | Login brute-force rate limit | 900s |
+| `login_attempts:{email}` | Login brute-force rate limit (email dimension) | 900s |
+| `login_attempts_ip:{ip}` | Login brute-force rate limit (IP dimension) | 900s |
+| `register_rate:{ip}` | Registration rate limit (IP) | 3600s |
+| `forgot_pw_rate:{ip}` | Forgot-password rate limit (IP) | 3600s |
+| `setup_rate:{ip}` | Setup/migration endpoint rate limit (IP) | 900s |
 | `2fa_attempts:{jti}` | General 2FA attempt counter | 600s |
 | `passkey_opts:{jti}` | Passkey options attempt counter | 600s |
 | `totp_confirm:{userId}` | TOTP setup confirm attempt counter | 120s |
@@ -233,12 +237,14 @@ Email sender config and API keys are managed in the **admin UI settings**, not h
 There are two migration paths:
 
 **`wrangler d1 migrations apply` (local dev):**
-One file in `apps/worker/migrations/`:
+Two files in `apps/worker/migrations/`:
 - `0001_init.sql` — canonical schema: all tables (users, passkeys, links, click_logs, verifications, settings, audit_logs, totp_used) + default settings rows
+- `0002_token_version.sql` — adds `users.token_version` for session revocation
 
 **HTTP setup route (production):**
-`GET /setup/:secret` runs migrations embedded in `routes/setup.ts`. Currently one migration:
+`POST /setup` with `X-Setup-Secret` header runs migrations embedded in `routes/setup.ts`. Two migrations:
 - `schema_v1` — identical DDL as `0001_init.sql`, but parameterized by `TABLE_PREFIX` and tracked in `_schema_migrations` table
+- `schema_v2` — adds `token_version` to `users` (mirrors `0002_token_version.sql`)
 
 Re-visiting the setup URL is safe — already-applied migrations return `"skipped"`.
 
@@ -251,14 +257,17 @@ Re-visiting the setup URL is safe — already-applied migrations return `"skippe
 - Passkey registration capped at 10 per user
 - Forgot-password endpoint never reveals whether an email exists (always returns success)
 - Password reset codes: max 3 wrong attempts per code; rate-limited 3 sends per 10 min per email
-- Login brute-force limited to 10 attempts per 15-minute window per email (`login_attempts:{email}` KV)
+- Login brute-force limited to 10 attempts per 15-minute window per email, plus 20 per IP (`login_attempts:{email}` + `login_attempts_ip:{ip}` KV)
+- Registration and forgot-password additionally rate-limited per IP (`register_rate:{ip}`, `forgot_pw_rate:{ip}`)
+- Setup/migration endpoint rate-limited per IP (`setup_rate:{ip}`); secret passed via header and compared in constant time
 - `cf-connecting-ip` used for IP logging (cannot be forged); `x-forwarded-for` ignored
 - User-Agent and Referer headers truncated before storage (512 and 2048 bytes respectively)
 - `app_name` setting validated: 1–64 chars, no HTML-special or CR/LF characters
 - LIKE queries escape `%`, `_`, `\` metacharacters
 - `expiresAt` validated with `Number.isSafeInteger()` to reject NaN/Infinity
 - SMTP settings (`smtp_host`, `smtp_user`, `smtp_pass`, `smtp_from`) are validated against CR/LF injection; `smtp_from` validated as a valid email address; `smtp_port` validated as integer 1–65535
-- SMTP passwords are stored in plain text in D1 — for production deployments where this is a concern, use Resend with a Worker secret instead
+- SMTP STARTTLS failure aborts the send (never falls back to plaintext); SMTP I/O and Resend fetch both carry 10s timeouts
+- SMTP passwords are stored in plain text in D1 (but masked in audit logs and never returned by the settings API) — for production deployments where this is a concern, use Resend with a Worker secret instead
 
 ---
 

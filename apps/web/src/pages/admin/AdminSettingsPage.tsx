@@ -45,6 +45,10 @@ export default function AdminSettingsPage() {
   const [smtpPass, setSmtpPass] = useState('');
   const [smtpFrom, setSmtpFrom] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
+  // FE-S3: Backend masks secrets; track whether one is already configured so the
+  // UI can show "leave blank to keep" and avoid submitting an empty value.
+  const [resendKeyIsSet, setResendKeyIsSet] = useState(false);
+  const [smtpPassIsSet, setSmtpPassIsSet] = useState(false);
 
   useEffect(() => {
     if (data?.settings) {
@@ -53,13 +57,17 @@ export default function AdminSettingsPage() {
       setRequireEmailVerification(s.require_email_verification === 'true');
       setAppName(s.app_name ?? 'ShortLink');
       setEmailProvider((s.email_provider as 'resend' | 'smtp') ?? 'resend');
-      setResendApiKey(s.resend_api_key ?? '');
+      // FE-S3: Secrets are masked by the server ("***" when set) — never fill the
+      // input with them; only remember whether one is configured.
+      setResendApiKey('');
+      setResendKeyIsSet(s.resend_api_key === '***');
       setEmailFromDomain(s.email_from_domain ?? '');
       setEmailFromName(s.email_from_name ?? '');
       setSmtpHost(s.smtp_host ?? '');
       setSmtpPort(s.smtp_port ?? '587');
       setSmtpUser(s.smtp_user ?? '');
-      setSmtpPass(s.smtp_pass ?? '');
+      setSmtpPass('');
+      setSmtpPassIsSet(s.smtp_pass === '***');
       setSmtpFrom(s.smtp_from ?? '');
     }
   }, [data]);
@@ -112,17 +120,20 @@ export default function AdminSettingsPage() {
     e.preventDefault();
     setSavingEmail(true);
     try {
-      await adminApi.updateSettings({
+      // FE-S3: Only submit secret fields when the admin explicitly typed a value;
+      // empty values leave the existing credential untouched.
+      const payload: Record<string, string> = {
         email_provider: emailProvider,
-        resend_api_key: resendApiKey,
         email_from_domain: emailFromDomain,
         email_from_name: emailFromName,
         smtp_host: smtpHost,
         smtp_port: smtpPort,
         smtp_user: smtpUser,
-        smtp_pass: smtpPass,
         smtp_from: smtpFrom,
-      });
+      };
+      if (resendApiKey !== '') payload.resend_api_key = resendApiKey;
+      if (smtpPass !== '') payload.smtp_pass = smtpPass;
+      await adminApi.updateSettings(payload);
       toast.success('Email settings saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed');
@@ -247,10 +258,20 @@ export default function AdminSettingsPage() {
                     id="resend-api-key"
                     value={resendApiKey}
                     onChange={(e) => setResendApiKey(e.target.value)}
-                    placeholder="re_xxxxxxxxxxxx"
+                    placeholder={
+                      resendKeyIsSet
+                        ? '•••••••• (leave blank to keep)'
+                        : 're_xxxxxxxxxxxx'
+                    }
                     type="password"
                     autoComplete="new-password"
                   />
+                  {resendKeyIsSet && (
+                    <p className="text-xs text-muted-foreground">
+                      An API key is configured. Leave blank to keep it
+                      unchanged.
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Get your API key from{' '}
                     <a
@@ -348,12 +369,18 @@ export default function AdminSettingsPage() {
                     id="smtp-pass"
                     value={smtpPass}
                     onChange={(e) => setSmtpPass(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder={
+                      smtpPassIsSet
+                        ? '•••••••• (leave blank to keep)'
+                        : '••••••••'
+                    }
                     type="password"
                     autoComplete="new-password"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Credentials are stored in the database.
+                    {smtpPassIsSet
+                      ? 'A password is configured. Leave blank to keep it unchanged.'
+                      : 'Credentials are stored in the database.'}
                   </p>
                 </div>
               </div>

@@ -45,6 +45,7 @@ export interface UserRow {
   email_2fa_enabled: number;
   passkey_enabled: number;
   is_active: number;
+  token_version: number;
   created_at: number;
   updated_at: number;
 }
@@ -114,6 +115,7 @@ export interface AccessTokenPayload {
   sub: string;
   role: 'admin' | 'user';
   email: string;
+  tv: number;
   purpose: 'access';
   jti: string;
   exp: number;
@@ -121,6 +123,7 @@ export interface AccessTokenPayload {
 
 export interface RefreshTokenPayload {
   sub: string;
+  tv: number;
   purpose: 'refresh';
   jti: string;
   exp: number;

@@ -75,11 +75,26 @@ async function request<T>(
 // S3: In-flight dedup prevents multiple concurrent 401s from each triggering a refresh call.
 //     With refresh token rotation, only the first call succeeds; others would see a revoked
 //     token and force the user back to login unexpectedly.
+// FE-S1: The dedup is additionally serialized across tabs via the Web Locks API, so
+//     sibling tabs refreshing from the same cookie wait for each other instead of
+//     rotating the refresh token out from under one another.
 let refreshPromise: Promise<boolean> | null = null;
+
+function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (locks?.request) {
+    return locks.request(
+      'auth-refresh',
+      { mode: 'exclusive' },
+      fn,
+    ) as Promise<T>;
+  }
+  return fn();
+}
 
 async function tryRefresh(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = _doRefresh().finally(() => {
+  refreshPromise = withRefreshLock(_doRefresh).finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;
@@ -99,6 +114,14 @@ async function _doRefresh(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Serialized silent refresh for the BroadcastChannel 'refresh' handler and the
+// initial session restore — returns the new access token, or null when there is
+// no valid session.
+export async function refreshSession(): Promise<string | null> {
+  const ok = await tryRefresh();
+  return ok ? getAccessToken() : null;
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────
