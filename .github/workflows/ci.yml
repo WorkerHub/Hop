@@ -52,9 +52,8 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
-    # Non-blocking for now: existing advisories (react-router < 7.18.2) would
-    # otherwise fail every run. Make this blocking once they are resolved.
-    continue-on-error: true
+    # Blocking: react-router < 7.18.2 advisories are resolved, so a high+ audit
+    # finding should fail the run rather than let a vulnerable build deploy.
     steps:
       - uses: actions/checkout@v6
         with:
