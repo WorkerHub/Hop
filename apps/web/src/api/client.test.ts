@@ -7,6 +7,7 @@ import {
   isRetryableError,
   isSessionExpiredError,
   linksApi,
+  NetworkError,
   refreshSession,
   SessionExpiredError,
   setAccessToken,
@@ -125,28 +126,76 @@ describe('refresh concurrency', () => {
     assert.equal(calls.length, 1);
   });
 
-  test('the refresh is serialized through the Web Locks API', async () => {
-    const requested: string[] = [];
+  test('two tabs serialize their refreshes through the Web Locks API', async () => {
+    // A real mutex shared by both "tabs": only one callback runs at a time, so
+    // the second refresh has to wait for the first to finish.
+    let chain = Promise.resolve();
+    let lockRunning = 0;
+    let maxLockRunning = 0;
+    const lockNames: string[] = [];
+    const locks = {
+      request: async (
+        name: string,
+        _options: unknown,
+        callback: () => Promise<unknown>,
+      ) => {
+        lockNames.push(name);
+        const run = chain.then(async () => {
+          lockRunning += 1;
+          maxLockRunning = Math.max(maxLockRunning, lockRunning);
+          try {
+            return await callback();
+          } finally {
+            lockRunning -= 1;
+          }
+        });
+        chain = run.then(
+          () => {},
+          () => {},
+        );
+        return run;
+      },
+    };
     Object.defineProperty(globalThis, 'navigator', {
       configurable: true,
-      value: {
-        locks: {
-          request: async (
-            name: string,
-            _options: unknown,
-            callback: () => Promise<unknown>,
-          ) => {
-            requested.push(name);
-            return callback();
-          },
-        },
-      },
+      value: { locks },
     });
-    mockFetch(() => jsonResponse({ accessToken: 'locked-token' }));
 
-    assert.equal(await refreshSession(), 'ok');
-    assert.deepEqual(requested, ['auth-refresh']);
-    assert.equal(getAccessToken(), 'locked-token');
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let sequence = 0;
+    mockFetch(async (url) => {
+      assert.match(url, /\/auth\/refresh$/);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 25));
+      inFlight -= 1;
+      sequence += 1;
+      return jsonResponse({ accessToken: `token-${sequence}` });
+    });
+
+    // Two separate module instances model two tabs, each with its own in-flight
+    // refreshPromise. Only the shared Web Locks mutex keeps them from rotating
+    // the refresh cookie out from under one another. The query string forces a
+    // distinct module instance; TypeScript cannot resolve it, so it is imported
+    // through a plain string and cast back to the module's type.
+    const importFreshClient = (query: string) =>
+      import(`./client.ts?${query}`) as Promise<typeof import('./client.ts')>;
+    const tabA = await importFreshClient('tab=a');
+    const tabB = await importFreshClient('tab=b');
+
+    const [a, b] = await Promise.all([
+      tabA.refreshSession(),
+      tabB.refreshSession(),
+    ]);
+
+    assert.equal(a, 'ok');
+    assert.equal(b, 'ok');
+    assert.equal(tabA.getAccessToken(), 'token-1');
+    assert.equal(tabB.getAccessToken(), 'token-2');
+    assert.deepEqual(lockNames, ['auth-refresh', 'auth-refresh']);
+    assert.equal(maxInFlight, 1);
+    assert.equal(maxLockRunning, 1);
   });
 
   test('falls back to a direct call when Web Locks is unavailable', async () => {
@@ -275,12 +324,21 @@ describe('link boolean normalization (FE-Q3)', () => {
 });
 
 describe('isRetryableError (FE-R4)', () => {
-  test('retries transport errors and 5xx only', () => {
-    assert.equal(isRetryableError(new TypeError('Failed to fetch')), true);
+  test('retries network errors and 5xx only', () => {
+    assert.equal(isRetryableError(new NetworkError()), true);
+    assert.equal(isRetryableError(new NetworkError('offline')), true);
     assert.equal(isRetryableError(new ApiRequestError('boom', 500)), true);
     assert.equal(isRetryableError(new ApiRequestError('nope', 400)), false);
     assert.equal(isRetryableError(new ApiRequestError('nope', 404)), false);
     assert.equal(isRetryableError(new ApiRequestError('expired', 401)), false);
+  });
+
+  test('does not retry unclassified or parse errors', () => {
+    assert.equal(isRetryableError(new TypeError('Failed to fetch')), false);
+    assert.equal(isRetryableError(new SyntaxError('Unexpected token')), false);
+    assert.equal(isRetryableError(new Error('some programmer error')), false);
+    assert.equal(isRetryableError(undefined), false);
+    assert.equal(isRetryableError('boom'), false);
   });
 
   test('never retries an expired session', () => {

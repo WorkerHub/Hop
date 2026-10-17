@@ -59,6 +59,16 @@ export class ApiRequestError extends Error {
   }
 }
 
+// FE-R4: a transport failure (offline, timeout, DNS) is worth retrying, but it
+// is distinct from an HTTP response — otherwise `isRetryableError` cannot tell
+// a network problem (retry) from a thrown programming/parse error (don't retry).
+export class NetworkError extends Error {
+  constructor(message = 'Network error. Please try again.') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
 // #6: the session is over — every request waiting on the same refresh sees this
 // error, so the UI layer must not toast once per request. `isSessionExpiredError`
 // lets callers skip their own error toast; AuthProvider shows a single one.
@@ -76,9 +86,10 @@ export function isSessionExpiredError(error: unknown): boolean {
 export function isRetryableError(error: unknown): boolean {
   if (isSessionExpiredError(error)) return false;
   if (error instanceof ApiRequestError) return error.status >= 500;
-  // Anything without a status (fetch TypeError, timeout, the 'transient'
-  // refresh outcome) is a transport problem that may succeed on retry.
-  return true;
+  // Only the two classified transport paths are retried: a failed fetch and the
+  // 'transient' refresh outcome (both thrown as NetworkError). Everything else —
+  // a JSON parse failure, a programmer error — is a bug that a retry cannot fix.
+  return error instanceof NetworkError;
 }
 
 async function request<T>(
@@ -95,22 +106,32 @@ async function request<T>(
   }
 
   // H4: credentials: 'include' sends the HttpOnly refresh cookie on every request
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  } catch {
+    throw new NetworkError();
+  }
 
   if (res.status === 401 && !options.skipAuth) {
     // Attempt silent refresh via HttpOnly cookie
     const outcome = await tryRefresh();
     if (outcome === 'ok') {
       headers.Authorization = `Bearer ${accessToken}`;
-      const retryRes = await fetch(`${BASE}${path}`, {
-        ...options,
-        headers,
-        credentials: 'include',
-      });
+      let retryRes: Response;
+      try {
+        retryRes = await fetch(`${BASE}${path}`, {
+          ...options,
+          headers,
+          credentials: 'include',
+        });
+      } catch {
+        throw new NetworkError();
+      }
       if (!retryRes.ok) {
         const err = (await retryRes
           .json()
@@ -123,7 +144,7 @@ async function request<T>(
       // FE-R1: The refresh never got a verdict (offline, 5xx). The refresh
       // cookie may still be valid, so keep the session and fail just this
       // request — react-query retries, and the next 401 refreshes again.
-      throw new Error('Network error. Please try again.');
+      throw new NetworkError();
     }
     // The server rejected the refresh cookie — the session is really over.
     handleSessionExpired();

@@ -64,14 +64,17 @@ export default function AdminUsersPage() {
     onError: (err) => toastApiError(err, t('toast.deleteUserFailed')),
   });
 
-  // FE-C5: one mutation in flight at a time per row — a double click used to
-  // fire two racing PATCH/DELETE requests with conflicting payloads.
+  // FE-C5: while any mutation (update or delete) is in flight for a user, all of
+  // that user's controls are disabled — otherwise a PATCH could race the DELETE
+  // (or a second PATCH) and fire conflicting requests.
   const updatePendingId = updateMutation.isPending
     ? updateMutation.variables?.id
     : undefined;
   const deletePendingId = deleteMutation.isPending
     ? deleteMutation.variables
     : undefined;
+  const isRowPending = (id: string) =>
+    id === updatePendingId || id === deletePendingId;
 
   return (
     <div className="p-6">
@@ -139,9 +142,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <select
                       value={u.role}
-                      disabled={
-                        u.id === currentUser?.id || updatePendingId === u.id
-                      }
+                      disabled={u.id === currentUser?.id || isRowPending(u.id)}
                       onChange={(e) =>
                         updateMutation.mutate({
                           id: u.id,
@@ -176,9 +177,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <button
                       type="button"
-                      disabled={
-                        u.id === currentUser?.id || updatePendingId === u.id
-                      }
+                      disabled={u.id === currentUser?.id || isRowPending(u.id)}
                       onClick={() =>
                         updateMutation.mutate({
                           id: u.id,
@@ -203,7 +202,7 @@ export default function AdminUsersPage() {
                         variant="ghost"
                         size="icon"
                         disabled={
-                          u.id === currentUser?.id || deletePendingId === u.id
+                          u.id === currentUser?.id || isRowPending(u.id)
                         }
                         onClick={() => setDeleteId(u.id)}
                         className="text-destructive hover:text-destructive"
