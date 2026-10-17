@@ -102,36 +102,46 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: pnpm run db:migrate
 
-      - name: Deploy
-        run: pnpm run deploy
+      # TABLE_PREFIX in use: apply the prefix-aware migrations from
+      # src/lib/migrations.ts (the same ones POST /setup runs).
+      - name: Apply prefixed D1 migrations
+        if: steps.d1.outputs.mode == 'prefixed'
+        working-directory: apps/worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
+        run: bash ../../.github/scripts/d1-prefixed-migrations.sh
+
+      # Web and worker were built above; deploy the worker directly so wrangler
+      # can record the uploaded version ID for the verification step.
+      - name: Deploy
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+        run: pnpm run deploy
+
+      # Checked through the Cloudflare API rather than the public hostname, so
+      # the zone's bot protection can't make it inconclusive.
+      - name: Verify deployment
+        id: verify
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+          TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
+        run: bash ../../.github/scripts/verify-deployment.sh
 
       - name: Smoke test
         id: smoke
         env:
           APP_URL: ${{ vars.APP_URL }}
-          CHECK_DB: ${{ steps.d1.outputs.mode == 'apply' }}
-        run: |
-          if [[ -z "$APP_URL" ]]; then
-            echo "::error::Variable APP_URL is not set; cannot verify the deployment"
-            exit 1
-          fi
-          base="${APP_URL%/}"
-          probe() {
-            curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 15 "$base$1"
-          }
-          probe /api/health | jq -e '.status == "ok"'
-          probe / >/dev/null
-          # /api/config reads the settings table — confirms the schema is usable.
-          # Skipped when migrations are managed by the setup route instead.
-          if [[ "$CHECK_DB" == "true" ]]; then
-            probe /api/config | jq -e 'has("appName")'
-          fi
+          CHECK_DB: ${{ steps.d1.outputs.mode == 'apply' || steps.d1.outputs.mode == 'prefixed' }}
+        run: bash .github/scripts/smoke-test.sh
 
       - name: Rollback hint
-        if: failure() && steps.smoke.outcome == 'failure'
+        if: failure() && (steps.verify.outcome == 'failure' || steps.smoke.outcome == 'failure')
         run: |
-          echo "::error::Smoke test failed after deploy. To roll back the Worker to the previous version:"
+          echo "::error::Post-deploy verification failed. To roll back the Worker to the previous version:"
           echo "  cd apps/worker && pnpm exec wrangler rollback"
           echo "D1 migrations are NOT rolled back automatically; they are designed to stay compatible with the previous code."

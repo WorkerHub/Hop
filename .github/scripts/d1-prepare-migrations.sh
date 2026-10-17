@@ -11,22 +11,37 @@
 #
 #   setup.ts migration `schema_vN`  <=>  migrations/NNNN_*.sql  (N zero-padded)
 #
-# Writes `mode=apply` or `mode=skip` to $GITHUB_OUTPUT (stdout if unset).
-#   apply — wrangler migrations can run safely
-#   skip  — TABLE_PREFIX is in use; migrations/*.sql are not prefix-aware, so
-#           the schema must keep being managed through the setup route
+# Writes `mode=apply`, `mode=prefixed` or `mode=skip` to $GITHUB_OUTPUT
+# (stdout if unset).
+#   apply    — wrangler migrations can run safely
+#   prefixed — TABLE_PREFIX is in use; migrations/*.sql are not prefix-aware,
+#              so d1-prefixed-migrations.sh applies the setup-route migrations
+#   skip     — prefixed tables found but TABLE_PREFIX is not set here; the
+#              schema must keep being managed through the setup route
+#
+# D1_LOCATION=local runs the queries against the local D1 database instead of
+# the remote one (for testing this script).
 set -euo pipefail
 
 out="${GITHUB_OUTPUT:-/dev/stdout}"
+location="${D1_LOCATION:-remote}"
+if [[ "$location" != remote && "$location" != local ]]; then
+  echo "::error::D1_LOCATION must be 'remote' or 'local', got '$location'"
+  exit 1
+fi
 
 if [[ -n "${TABLE_PREFIX:-}" ]]; then
-  echo "::warning::TABLE_PREFIX is set; skipping wrangler D1 migrations. Run the setup route after deploy to apply schema changes."
-  echo "mode=skip" >>"$out"
+  if ! [[ "$TABLE_PREFIX" =~ ^[A-Za-z0-9_]+$ ]]; then
+    echo "::error::TABLE_PREFIX '$TABLE_PREFIX' may only contain letters, digits and underscores."
+    exit 1
+  fi
+  echo "TABLE_PREFIX=$TABLE_PREFIX — prefixed setup-route migrations will be applied instead of wrangler's."
+  echo "mode=prefixed" >>"$out"
   exit 0
 fi
 
 d1_query() {
-  pnpm exec wrangler d1 execute DB --remote --json --command "$1" |
+  pnpm exec wrangler d1 execute DB "--$location" --json --command "$1" |
     jq -r '.[0].results[] | .name'
 }
 
@@ -41,7 +56,7 @@ fi
 
 if ! has_table users; then
   if grep -Eq '^(_[A-Za-z0-9_]+_schema_migrations|[A-Za-z0-9_]+_users)$' <<<"$tables"; then
-    echo "::warning::Found prefixed tables but no unprefixed schema; looks like TABLE_PREFIX is in use. Set the TABLE_PREFIX variable on the production environment. Skipping wrangler D1 migrations."
+    echo "::warning::Found prefixed tables but no unprefixed schema; looks like TABLE_PREFIX is in use. Set the TABLE_PREFIX variable on the production environment so deploys apply prefixed migrations. Skipping D1 migrations."
     echo "mode=skip" >>"$out"
     exit 0
   fi
@@ -88,7 +103,7 @@ if [[ ${#values[@]} -eq 0 ]]; then
 fi
 
 echo "Baselining d1_migrations with: ${values[*]}"
-pnpm exec wrangler d1 execute DB --remote --command "
+pnpm exec wrangler d1 execute DB "--$location" --command "
   CREATE TABLE IF NOT EXISTS d1_migrations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT UNIQUE,

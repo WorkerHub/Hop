@@ -97,7 +97,18 @@
 
 ### 6. 运行数据库迁移
 
-部署后，通过 `POST` 请求触发迁移一次，密钥放在请求头中（不再通过 URL 传递）：
+GitHub Actions 会在部署代码**之前**自动执行迁移：无前缀时仍使用
+`wrangler d1 migrations apply`；有前缀时使用与 setup 路由共享的
+`apps/worker/src/lib/migrations.ts`，按 `_<prefix>_schema_migrations` 跳过已执行项，
+并在日志中打印待执行计划。迁移必须向后兼容，只添加表、索引或列，不删除、重命名或修改现有数据。
+
+使用前缀时，在 GitHub 的 **production environment → Variables** 中设置
+`TABLE_PREFIX`，与 Cloudflare Worker 的同名**明文变量**完全一致（例如 `SL`，仅字母、数字和下划线）。
+不要把它设为 Secret，也不要在已有数据后更换前缀。GitHub 中的 `APP_URL` 也必须指向生产地址。
+现有 `CLOUDFLARE_API_TOKEN` 需要有目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。
+
+无需在每次部署后调用 `/setup`。手动部署或应急操作仍可通过 `POST` 请求触发，
+密钥放在请求头中（不再通过 URL 传递）：
 
 ```
 curl -X POST https://your-worker.workers.dev/setup \
@@ -113,7 +124,10 @@ curl -X POST https://your-worker.workers.dev/setup \
 }
 ```
 
-重复访问是安全的 — 已应用的迁移会返回 `"skipped"`。添加新迁移后再次运行即可。
+重复调用是安全的，已执行的迁移会返回 `"skipped"`。自动部署不需要手动调用。
+部署后还会通过 Cloudflare API 核对本次上传的版本承载 100% 流量，再检查公开 URL。
+公开 URL 返回带 `cf-mitigated: challenge` 的 403 时仅警告（HTTP/数据库检查未能验证），
+其余非 2xx 或错误的 JSON 均失败；无需关闭 Bot Fight Mode。
 
 ### 7. 首次登录
 
