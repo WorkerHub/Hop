@@ -20,6 +20,7 @@ export const en = {
     no: 'No',
     user: 'User',
     admin: 'Admin',
+    retry: 'Retry',
   },
   nav: {
     links: 'Links',
@@ -77,6 +78,9 @@ export const en = {
     verificationCode: 'Verification Code',
     accountCreated: 'Account created! Please sign in.',
     verifyCodeResent: 'Verification code resent.',
+    emailVerifiedSignIn: 'Email verified. Please sign in.',
+    configLoadFailed:
+      "Couldn't load site settings. Check your connection and try again.",
   },
   links: {
     title: 'My Links',

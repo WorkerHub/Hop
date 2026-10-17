@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import type React from 'react';
 import {
   createContext,
@@ -12,6 +13,7 @@ import {
   type LoginResult,
   refreshSession,
   setAccessToken,
+  setSessionExpiredHandler,
   type User,
 } from '../api/client.ts';
 
@@ -43,6 +45,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pendingMethods, setPendingMethods] = useState<string[]>([]);
   // H-1: BroadcastChannel for cross-tab login/logout coordination (signal only)
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const queryClient = useQueryClient();
+
+  // FE-R2: End an expired session in-SPA. Clearing the user lets
+  // ProtectedRoute/AdminRoute redirect to /login, replacing the per-request
+  // `window.location.href = '/login'` hard reloads.
+  useEffect(() => {
+    setSessionExpiredHandler(() => setUser(null));
+    return () => setSessionExpiredHandler(null);
+  }, []);
+
+  // Without a full page reload on session end, cached queries would survive
+  // into the next session in this tab — drop them whenever nobody is signed in.
+  useEffect(() => {
+    if (!user) queryClient.clear();
+  }, [user, queryClient]);
 
   const refreshUser = useCallback(async () => {
     try {

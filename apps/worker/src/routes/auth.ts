@@ -6,7 +6,7 @@ import {
   sha256,
   verifyPassword,
 } from '../lib/crypto.js';
-import { tbl } from '../lib/db.js';
+import { isUniqueConstraintError, tbl } from '../lib/db.js';
 import {
   otpEmailHtml,
   resetPasswordEmailHtml,
@@ -236,17 +236,33 @@ auth.post('/register', async (c) => {
 
   const passwordHash = await hashPassword(password);
 
+  // BE-C3: The SELECT above is only a fast path — a concurrent registration with
+  // the same email/username can slip between it and the INSERT. The UNIQUE
+  // constraints are the real guard; report their violation as 409, not 500.
+  type NewUser = { id: string; email: string; username: string; role: string };
+  const insertUser = async (sql: string): Promise<NewUser | null | 'taken'> => {
+    try {
+      return await c.env.DB.prepare(sql)
+        .bind(email, username, passwordHash)
+        .first<NewUser>();
+    } catch (err) {
+      if (isUniqueConstraintError(err)) return 'taken';
+      throw err;
+    }
+  };
+
   // If email verification is required (non-first user only), create account as inactive
   // and send a verification code before the user can log in.
   if (!isFirstUser && (await isEmailVerificationRequired(c.env))) {
-    const newUser = await c.env.DB.prepare(
+    const newUser = await insertUser(
       `INSERT INTO ${tbl(c.env, 'users')} (email, username, password_hash, role, is_active)
        VALUES (?1, ?2, ?3, 'user', 0)
        RETURNING id, email, username, role`,
-    )
-      .bind(email, username, passwordHash)
-      .first<{ id: string; email: string; username: string; role: string }>();
+    );
 
+    if (newUser === 'taken') {
+      return c.json({ error: 'Email or username already taken' }, 409);
+    }
     if (!newUser) return c.json({ error: 'Failed to create user' }, 500);
 
     const code = generateOtp(6);
@@ -282,14 +298,15 @@ auth.post('/register', async (c) => {
   }
 
   // H3: Role assigned atomically inside SQL — prevents bootstrap race condition
-  const result = await c.env.DB.prepare(
+  const result = await insertUser(
     `INSERT INTO ${tbl(c.env, 'users')} (email, username, password_hash, role)
      VALUES (?1, ?2, ?3, CASE WHEN (SELECT COUNT(*) FROM ${tbl(c.env, 'users')}) = 0 THEN 'admin' ELSE 'user' END)
      RETURNING id, email, username, role`,
-  )
-    .bind(email, username, passwordHash)
-    .first<{ id: string; email: string; username: string; role: string }>();
+  );
 
+  if (result === 'taken') {
+    return c.json({ error: 'Email or username already taken' }, 409);
+  }
   if (!result) return c.json({ error: 'Failed to create user' }, 500);
 
   return c.json(

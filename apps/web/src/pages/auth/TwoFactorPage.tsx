@@ -1,6 +1,6 @@
 import { startAuthentication } from '@simplewebauthn/browser';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { LoginResult } from '@/api/client';
 import { authApi, setAccessToken } from '@/api/client';
@@ -36,18 +36,22 @@ export default function TwoFactorPage() {
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
 
-  if (!pendingToken) {
-    navigate('/login');
-    return null;
-  }
+  // FE-C3: Redirect declaratively — calling navigate() during render is a side
+  // effect React may run twice (StrictMode) or warn about.
+  if (!pendingToken) return <Navigate to="/login" replace />;
 
-  const handleSuccess = (result: LoginResult) => {
-    if (result.accessToken) {
-      setAccessToken(result.accessToken);
-      broadcastRefresh();
+  const handleSuccess = async (result: LoginResult) => {
+    if (!result.accessToken) {
+      toast.error('Verification failed');
+      return;
     }
+    setAccessToken(result.accessToken);
+    broadcastRefresh();
+    await refreshUser();
+    // Leave the page before clearing the pending state: clearing it first
+    // re-renders this page without a pendingToken and flashes /login.
+    navigate('/dashboard', { replace: true });
     clearPendingState();
-    refreshUser().then(() => navigate('/dashboard'));
   };
 
   const handleTotpVerify = async (e: React.FormEvent) => {
@@ -55,7 +59,7 @@ export default function TwoFactorPage() {
     setLoading(true);
     try {
       const result = await authApi.totpVerify(pendingToken, code);
-      handleSuccess(result);
+      await handleSuccess(result);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Invalid code');
     } finally {
@@ -81,7 +85,7 @@ export default function TwoFactorPage() {
     setLoading(true);
     try {
       const result = await authApi.emailOtpVerify(pendingToken, code);
-      handleSuccess(result);
+      await handleSuccess(result);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Invalid code');
     } finally {
@@ -100,7 +104,7 @@ export default function TwoFactorPage() {
         response,
         challengeId,
       );
-      handleSuccess(result);
+      await handleSuccess(result);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Passkey authentication failed',

@@ -12,6 +12,9 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "test": {
+      "cache": false
+    },
     "deploy": {
       "dependsOn": ["@shortlink/web#build", "build"],
       "cache": false,

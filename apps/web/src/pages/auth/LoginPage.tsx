@@ -17,7 +17,11 @@ import { useTranslation } from '@/i18n';
 
 export default function LoginPage() {
   const { login, setPendingState } = useAuth();
-  const { registrationEnabled } = useAppConfig();
+  const {
+    registrationEnabled,
+    loadFailed: configLoadFailed,
+    reload: reloadConfig,
+  } = useAppConfig();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -85,6 +89,23 @@ export default function LoginPage() {
             {t('auth.signIn')}
           </Button>
         </form>
+        {/* FE-R3: Say so when /api/config failed instead of silently hiding
+            the register link. */}
+        {configLoadFailed && (
+          <p
+            className="mt-4 text-center text-sm text-muted-foreground"
+            role="alert"
+          >
+            {t('auth.configLoadFailed')}{' '}
+            <button
+              type="button"
+              onClick={reloadConfig}
+              className="text-primary hover:underline"
+            >
+              {t('common.retry')}
+            </button>
+          </p>
+        )}
         {registrationEnabled && (
           <p className="mt-4 text-center text-sm text-muted-foreground">
             {t('auth.noAccount')}{' '}

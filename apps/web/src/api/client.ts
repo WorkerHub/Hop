@@ -2,12 +2,33 @@
 
 let accessToken: string | null = null;
 
+// FE-R2: When a refresh is rejected, every request that was waiting on it sees
+// the same failure. Handle the expiry once per session (instead of each request
+// hard-navigating to /login) and let the app end the session in-SPA through the
+// handler registered by AuthProvider.
+let sessionExpiredHandled = false;
+let sessionExpiredHandler: (() => void) | null = null;
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  // A fresh token starts a new session, so a later expiry is handled again.
+  if (token) sessionExpiredHandled = false;
 }
 
 export function getAccessToken() {
   return accessToken;
+}
+
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  sessionExpiredHandler = handler;
+}
+
+function handleSessionExpired() {
+  accessToken = null;
+  if (sessionExpiredHandled) return;
+  sessionExpiredHandled = true;
+  if (sessionExpiredHandler) sessionExpiredHandler();
+  else window.location.assign('/login');
 }
 
 const BASE = '/api';
@@ -38,8 +59,8 @@ async function request<T>(
 
   if (res.status === 401 && !options.skipAuth) {
     // Attempt silent refresh via HttpOnly cookie
-    const refreshed = await tryRefresh();
-    if (refreshed) {
+    const outcome = await tryRefresh();
+    if (outcome === 'ok') {
       headers.Authorization = `Bearer ${accessToken}`;
       const retryRes = await fetch(`${BASE}${path}`, {
         ...options,
@@ -54,9 +75,14 @@ async function request<T>(
       }
       return retryRes.json() as Promise<T>;
     }
-    // Refresh failed — clear access token and redirect
-    setAccessToken(null);
-    window.location.href = '/login';
+    if (outcome === 'transient') {
+      // FE-R1: The refresh never got a verdict (offline, 5xx). The refresh
+      // cookie may still be valid, so keep the session and fail just this
+      // request — react-query retries, and the next 401 refreshes again.
+      throw new Error('Network error. Please try again.');
+    }
+    // The server rejected the refresh cookie — the session is really over.
+    handleSessionExpired();
     throw new Error('Session expired');
   }
 
@@ -78,7 +104,11 @@ async function request<T>(
 // FE-S1: The dedup is additionally serialized across tabs via the Web Locks API, so
 //     sibling tabs refreshing from the same cookie wait for each other instead of
 //     rotating the refresh token out from under one another.
-let refreshPromise: Promise<boolean> | null = null;
+// FE-R1: 'transient' (network failure, 5xx, 408/429) says nothing about the
+// session; only 'expired' — the server rejected the refresh cookie — ends it.
+type RefreshOutcome = 'ok' | 'expired' | 'transient';
+
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
@@ -92,7 +122,7 @@ function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
   return fn();
 }
 
-async function tryRefresh(): Promise<boolean> {
+async function tryRefresh(): Promise<RefreshOutcome> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = withRefreshLock(_doRefresh).finally(() => {
     refreshPromise = null;
@@ -100,19 +130,29 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
-async function _doRefresh(): Promise<boolean> {
+async function _doRefresh(): Promise<RefreshOutcome> {
+  let res: Response;
   try {
-    const res = await fetch(`${BASE}/auth/refresh`, {
+    res = await fetch(`${BASE}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { accessToken: string };
-    setAccessToken(data.accessToken);
-    return true;
   } catch {
-    return false;
+    return 'transient';
+  }
+  if (!res.ok) {
+    const transient =
+      res.status >= 500 || res.status === 408 || res.status === 429;
+    return transient ? 'transient' : 'expired';
+  }
+  try {
+    const data = (await res.json()) as { accessToken?: string };
+    if (!data.accessToken) return 'transient';
+    setAccessToken(data.accessToken);
+    return 'ok';
+  } catch {
+    return 'transient';
   }
 }
 
@@ -120,8 +160,8 @@ async function _doRefresh(): Promise<boolean> {
 // initial session restore — returns the new access token, or null when there is
 // no valid session.
 export async function refreshSession(): Promise<string | null> {
-  const ok = await tryRefresh();
-  return ok ? getAccessToken() : null;
+  const outcome = await tryRefresh();
+  return outcome === 'ok' ? getAccessToken() : null;
 }
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────

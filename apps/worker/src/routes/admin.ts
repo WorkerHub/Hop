@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { hashPassword } from '../lib/crypto.js';
-import { tbl } from '../lib/db.js';
+import { isUniqueConstraintError, tbl } from '../lib/db.js';
 import { deleteCachedLink, deleteCachedSetting } from '../lib/kv.js';
+import { parsePagination } from '../lib/params.js';
 import { requireAdmin } from '../middleware/auth.js';
 import type { Env, LinkRow, UserRow, Variables } from '../types.js';
 
@@ -69,13 +70,12 @@ admin.get('/stats', async (c) => {
 // GET /api/admin/users
 // ─────────────────────────────────────────────────────────────────────────────
 admin.get('/users', async (c) => {
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10));
-  const limit = Math.min(
+  const { page, limit, offset } = parsePagination(
+    c.req.query('page'),
+    c.req.query('limit'),
     50,
-    Math.max(1, parseInt(c.req.query('limit') ?? '20', 10)),
   );
   const search = c.req.query('search')?.trim() ?? '';
-  const offset = (page - 1) * limit;
   const U = tbl(c.env, 'users');
 
   let query: string;
@@ -166,11 +166,22 @@ admin.post('/users', async (c) => {
   const passwordHash = await hashPassword(body.password);
   const role = body.role ?? 'user';
 
-  const result = await c.env.DB.prepare(
-    `INSERT INTO ${U} (email, username, password_hash, role) VALUES (?1, ?2, ?3, ?4) RETURNING id, email, username, role`,
-  )
-    .bind(email, username, passwordHash, role)
-    .first<{ id: string; email: string; username: string; role: string }>();
+  // BE-C3: Concurrent creates can race past the SELECT above; map the UNIQUE
+  // constraint violation to 409 instead of letting it surface as a 500.
+  type NewUser = { id: string; email: string; username: string; role: string };
+  let result: NewUser | null;
+  try {
+    result = await c.env.DB.prepare(
+      `INSERT INTO ${U} (email, username, password_hash, role) VALUES (?1, ?2, ?3, ?4) RETURNING id, email, username, role`,
+    )
+      .bind(email, username, passwordHash, role)
+      .first<NewUser>();
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return c.json({ error: 'Email or username already taken' }, 409);
+    }
+    throw err;
+  }
 
   if (!result) return c.json({ error: 'Failed to create user' }, 500);
 
@@ -291,14 +302,13 @@ admin.delete('/users/:id', async (c) => {
 // GET /api/admin/links
 // ─────────────────────────────────────────────────────────────────────────────
 admin.get('/links', async (c) => {
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10));
-  const limit = Math.min(
+  const { page, limit, offset } = parsePagination(
+    c.req.query('page'),
+    c.req.query('limit'),
     100,
-    Math.max(1, parseInt(c.req.query('limit') ?? '20', 10)),
   );
   const search = c.req.query('search')?.trim() ?? '';
   const userId = c.req.query('userId');
-  const offset = (page - 1) * limit;
 
   const L = tbl(c.env, 'links');
   const U = tbl(c.env, 'users');

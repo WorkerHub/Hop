@@ -22,7 +22,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
-import { formatDate } from '@/lib/utils';
+import {
+  formatDate,
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from '@/lib/utils';
 
 export default function LinksPage() {
   const { t } = useTranslation();
@@ -231,20 +235,28 @@ function CreateLinkDialog({
   const [expiryOption, setExpiryOption] = useState<
     'never' | '1' | '7' | '30' | 'custom'
   >('never');
+  // Raw datetime-local value for the "custom" option, kept apart from `form` so
+  // switching options can never leave a stale timestamp in the payload.
+  const [customExpiry, setCustomExpiry] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      // FE-C1: The backend gives expiresAt precedence over expiryDays, so only
+      // the field matching the currently selected option may be sent.
       const payload: CreateLinkPayload = { ...form };
-      if (expiryOption !== 'never' && expiryOption !== 'custom') {
+      if (expiryOption === 'custom') {
+        payload.expiresAt = fromDatetimeLocalValue(customExpiry);
+      } else if (expiryOption !== 'never') {
         payload.expiryDays = parseInt(expiryOption, 10);
       }
       await linksApi.create(payload);
       toast.success('Link created!');
       setForm({ destinationUrl: '' });
       setExpiryOption('never');
+      setCustomExpiry('');
       onCreated();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create link');
@@ -325,14 +337,8 @@ function CreateLinkDialog({
             {expiryOption === 'custom' && (
               <Input
                 type="datetime-local"
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    expiresAt: e.target.value
-                      ? Math.floor(new Date(e.target.value).getTime() / 1000)
-                      : null,
-                  }))
-                }
+                value={customExpiry}
+                onChange={(e) => setCustomExpiry(e.target.value)}
               />
             )}
           </div>
@@ -386,7 +392,9 @@ export function EditLinkDialog({
         customSlug: form.customSlug,
         title: form.title || undefined,
         isActive: form.isActive,
-        expiresAt,
+        // Only send expiresAt when it was edited: re-sending an unchanged past
+        // expiry would make the backend reject edits to an expired link.
+        ...(expiresAt !== link.expires_at && { expiresAt }),
       });
       toast.success('Link updated');
       onUpdated();
@@ -397,9 +405,7 @@ export function EditLinkDialog({
     }
   };
 
-  const expiresAtInputValue = expiresAt
-    ? new Date(expiresAt * 1000).toISOString().slice(0, 16)
-    : '';
+  const expiresAtInputValue = toDatetimeLocalValue(expiresAt);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -444,11 +450,7 @@ export function EditLinkDialog({
               type="datetime-local"
               value={expiresAtInputValue}
               onChange={(e) =>
-                setExpiresAt(
-                  e.target.value
-                    ? Math.floor(new Date(e.target.value).getTime() / 1000)
-                    : null,
-                )
+                setExpiresAt(fromDatetimeLocalValue(e.target.value))
               }
             />
           </div>

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { tbl } from '../lib/db.js';
+import { parseIntParam } from '../lib/params.js';
 import { requireAuth } from '../middleware/auth.js';
 import type { Env, LinkRow, Variables } from '../types.js';
 
@@ -33,10 +34,7 @@ async function getLinkForUser(
 // ─────────────────────────────────────────────────────────────────────────────
 analytics.get('/summary', async (c) => {
   const userId = c.get('userId');
-  const days = Math.min(
-    365,
-    Math.max(1, parseInt(c.req.query('days') ?? '30', 10)),
-  );
+  const days = parseIntParam(c.req.query('days'), 30, 1, 365);
   const now = Math.floor(Date.now() / 1000);
   const since = now - days * 86400;
 
@@ -133,10 +131,7 @@ analytics.get('/:linkId', async (c) => {
   const link = await getLinkForUser(c.env, linkId, userId, role);
   if (!link) return c.json({ error: 'Link not found' }, 404);
 
-  const days = Math.min(
-    365,
-    Math.max(1, parseInt(c.req.query('days') ?? '30', 10)),
-  );
+  const days = parseIntParam(c.req.query('days'), 30, 1, 365);
   const now = Math.floor(Date.now() / 1000);
   const since = now - days * 86400;
 
