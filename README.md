@@ -94,18 +94,23 @@ This will deploy the code to Cloudflare Workers.
 
 ### 6. Run database migrations
 
-GitHub Actions 会在部署代码**之前**自动执行迁移：无前缀时仍使用
-`wrangler d1 migrations apply`；有前缀时使用与 setup 路由共享的
-`apps/worker/src/lib/migrations.ts`，按 `_<prefix>_schema_migrations` 跳过已执行项，
-并在日志中打印待执行计划。迁移必须向后兼容，只添加表、索引或列，不删除、重命名或修改现有数据。
+The Deploy workflow applies migrations automatically **before** deploying the code.
+Without a prefix it uses `wrangler d1 migrations apply` as before. With `TABLE_PREFIX`
+set it applies the migrations from `apps/worker/src/lib/migrations.ts` (the same ones
+the setup route runs), skips those already recorded in `_<prefix>_schema_migrations`,
+and prints the planned migrations in the log. Migrations must stay backward compatible:
+only add tables, indexes or columns — never drop, rename or rewrite existing data.
 
-使用前缀时，在 GitHub 的 **production environment → Variables** 中设置
-`TABLE_PREFIX`，与 Cloudflare Worker 的同名**明文变量**完全一致（例如 `SL`，仅字母、数字和下划线）。
-不要把它设为 Secret，也不要在已有数据后更换前缀。GitHub 中的 `APP_URL` 也必须指向生产地址。
-现有 `CLOUDFLARE_API_TOKEN` 需要有目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。
+When using a prefix, set `TABLE_PREFIX` under the GitHub **production environment →
+Variables** to exactly the same value as the Worker's `TABLE_PREFIX` **plain-text
+variable** in Cloudflare (e.g. `SL`; letters, digits and underscores only). Do not store
+it as a secret, and do not change it once data exists. The GitHub `APP_URL` variable must
+point at the production URL. `CLOUDFLARE_API_TOKEN` needs edit access to the D1 database
+and edit/version-read access to the Worker.
 
-无需在每次部署后调用 `/setup`。手动部署或应急操作仍可通过 `POST` 请求触发，
-密钥放在请求头中（不再通过 URL 传递）：
+You no longer need to call `/setup` after each deploy. For manual deployments or
+emergencies it can still be triggered with a `POST` request carrying the setup secret in
+a header (it is no longer accepted in the URL):
 
 ```
 curl -X POST https://your-worker.workers.dev/setup \
@@ -121,10 +126,13 @@ Response on success:
 }
 ```
 
-重复调用是安全的，已执行的迁移会返回 `"skipped"`。自动部署不需要手动调用。
-部署后还会通过 Cloudflare API 核对本次上传的版本承载 100% 流量，再检查公开 URL。
-公开 URL 返回带 `cf-mitigated: challenge` 的 403 时仅警告（HTTP/数据库检查未能验证），
-其余非 2xx 或错误的 JSON 均失败；无需关闭 Bot Fight Mode。
+Re-running it is safe — already-applied migrations return `"skipped"`.
+
+After deploying, the workflow first confirms through the Cloudflare API that the uploaded
+version serves 100% of production traffic, then probes the public URL. A `403` carrying
+`cf-mitigated: challenge` (e.g. Bot Fight Mode challenging the CI runner) only produces a
+warning, since the HTTP/database check could not run; any other non-2xx status or an
+unexpected JSON body fails the deploy. Bot Fight Mode can stay enabled.
 
 ### 7. First login
 

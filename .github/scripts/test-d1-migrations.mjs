@@ -86,10 +86,39 @@ migrations_dir = "migrations"
       INSERT INTO ZETA_users VALUES ('zeta-user');
       CREATE TABLE ZETA_links (id TEXT, slug TEXT);
       INSERT INTO ZETA_links VALUES ('zeta-link', 'keep');
-      CREATE INDEX idx_links_slug ON ZETA_links(slug);`);
+      CREATE INDEX idx_ZETA_links_slug ON ZETA_links(slug);`);
     return foreignSnapshot();
   };
-  return { run, query, script, setup, shared, foreignSnapshot, env, cwd };
+  // SQLite 索引名全库唯一：若别的应用已占用同名索引，CREATE INDEX IF NOT EXISTS
+  // 会静默跳过。逐个核对迁移声明的索引确实建在本应用的表上。
+  const assertOwnIndexes = (prefix) => {
+    const expected = getMigrations(prefix)
+      .flatMap((m) =>
+        Array.from(
+          m.sql.matchAll(/CREATE INDEX IF NOT EXISTS (\w+)\s+ON (\w+)/g),
+          ([, name, tbl_name]) => ({ name, tbl_name }),
+        ),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+    assert.ok(expected.length > 0);
+    assert.deepEqual(
+      query(`SELECT name, tbl_name FROM sqlite_master
+        WHERE type = 'index' AND name IN (${expected.map((i) => `'${i.name}'`).join(',')})
+        ORDER BY name`)[0],
+      expected,
+    );
+  };
+  return {
+    run,
+    query,
+    script,
+    setup,
+    shared,
+    foreignSnapshot,
+    assertOwnIndexes,
+    env,
+    cwd,
+  };
 }
 
 test('无前缀：保留 Wrangler 迁移路径及重复执行行为', (t) => {
@@ -174,6 +203,7 @@ test('有前缀且有待执行迁移：仅应用 v2，保留其他应用的表�
     f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
     [{ name: 'schema_v1' }, { name: 'schema_v2' }],
   );
+  f.assertOwnIndexes('SL');
   assert.deepEqual(f.query('SELECT email,token_version FROM SL_users')[0], [
     { email: 'sl@example.com', token_version: 0 },
   ]);
@@ -196,6 +226,7 @@ test('有前缀的新安装：只创建本应用的表，共享库保持不变',
     f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
     [{ name: 'schema_v1' }, { name: 'schema_v2' }],
   );
+  f.assertOwnIndexes('SL');
 });
 
 test('已有业务表但无历史或历史为空：拒绝猜测 baseline，不写入其他应用', (t) => {
@@ -213,4 +244,15 @@ test('已有业务表但无历史或历史为空：拒绝猜测 baseline，不�
   );
   assert.deepEqual(f.query('SELECT name FROM _SL_schema_migrations')[0], []);
   assert.deepEqual(f.foreignSnapshot(), before);
+});
+
+test('已知限制：别的应用占用同名索引时，本应用索引会被静默跳过（检查可发现）', (t) => {
+  const f = fixture(t);
+  f.shared();
+  f.query('CREATE INDEX idx_links_slug ON ZETA_links(slug)');
+  assert.match(
+    f.script('d1-prefixed-migrations.sh', 'SL'),
+    /Planned migrations: schema_v1 schema_v2/,
+  );
+  assert.throws(() => f.assertOwnIndexes('SL'), /Expected values/);
 });
