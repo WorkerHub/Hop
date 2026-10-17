@@ -97,10 +97,11 @@
 
 ### 6. 运行数据库迁移
 
-部署后，在浏览器中访问以下 URL 一次（或使用 `curl`）：
+部署后，通过 `POST` 请求触发迁移一次，密钥放在请求头中（不再通过 URL 传递）：
 
 ```
-https://your-worker.workers.dev/setup/<SETUP_SECRET>
+curl -X POST https://your-worker.workers.dev/setup \
+  -H "X-Setup-Secret: <SETUP_SECRET>"
 ```
 
 成功响应：

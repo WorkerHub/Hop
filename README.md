@@ -94,10 +94,12 @@ This will deploy the code to Cloudflare Workers.
 
 ### 6. Run database migrations
 
-After deploying, visit this URL once in your browser (or with `curl`):
+After deploying, trigger the migrations once via a `POST` request with the setup
+secret in a header (it is no longer accepted in the URL):
 
 ```
-https://your-worker.workers.dev/setup/<SETUP_SECRET>
+curl -X POST https://your-worker.workers.dev/setup \
+  -H "X-Setup-Secret: <SETUP_SECRET>"
 ```
 
 Response on success:

@@ -15,6 +15,29 @@ interface SmtpSocket {
   close: () => Promise<void>;
 }
 
+// BE-R1: Per-operation read/write timeout so a non-responsive SMTP server can't
+// hang the Worker until the platform kills the request.
+const SMTP_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`SMTP: operation timed out after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 // Send an HTML email via a custom SMTP server.
 // Supports implicit TLS (port 465) and STARTTLS (port 587 / others).
 export async function sendViaSMTP(
@@ -70,12 +93,16 @@ class SmtpSession {
   }
 
   // Send STARTTLS and upgrade the socket to TLS in-place.
-  // If the server responds with a non-220 code, the connection stays plain
-  // and we proceed without TLS (some internal relays allow this).
+  // BE-S2: If the server declines STARTTLS (non-220), abort — never fall back to
+  // sending credentials (AUTH LOGIN) over a plaintext channel.
   async tryStartTls(): Promise<void> {
     await this.cmd('STARTTLS');
     const resp = await this.readResponse();
-    if (resp.code !== 220) return; // server declined STARTTLS — continue plain
+    if (resp.code !== 220) {
+      throw new Error(
+        `SMTP: server declined STARTTLS (${resp.code} ${resp.message}); refusing to send credentials in plaintext`,
+      );
+    }
 
     // Release stream locks before handing the socket to startTls()
     this.reader.releaseLock();
@@ -133,7 +160,10 @@ class SmtpSession {
       `${b64Body}\r\n` +
       `.\r\n`; // end-of-data marker
 
-    await this.writer.write(new TextEncoder().encode(message));
+    await withTimeout(
+      this.writer.write(new TextEncoder().encode(message)),
+      SMTP_TIMEOUT_MS,
+    );
     await this.expect(250);
   }
 
@@ -142,7 +172,10 @@ class SmtpSession {
   }
 
   async cmd(text: string): Promise<void> {
-    await this.writer.write(new TextEncoder().encode(`${text}\r\n`));
+    await withTimeout(
+      this.writer.write(new TextEncoder().encode(`${text}\r\n`)),
+      SMTP_TIMEOUT_MS,
+    );
   }
 
   async expect(code: number): Promise<void> {
@@ -159,7 +192,10 @@ class SmtpSession {
     for (;;) {
       // Buffer until we have at least one complete line
       while (!this.buf.includes('\r\n')) {
-        const { value, done } = await this.reader.read();
+        const { value, done } = await withTimeout(
+          this.reader.read(),
+          SMTP_TIMEOUT_MS,
+        );
         if (done) throw new Error('SMTP: connection closed unexpectedly');
         this.buf += this.dec.decode(value);
       }

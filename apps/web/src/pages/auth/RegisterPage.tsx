@@ -25,7 +25,7 @@ export default function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { registrationEnabled } = useAppConfig();
-  const { refreshUser, broadcastLogin } = useAuth();
+  const { refreshUser, broadcastRefresh } = useAuth();
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -66,7 +66,7 @@ export default function RegisterPage() {
       const result = await authApi.verifyEmail(userId, code);
       if (result.accessToken) {
         setAccessToken(result.accessToken);
-        broadcastLogin(result.accessToken);
+        broadcastRefresh();
       }
       await refreshUser();
       navigate('/dashboard');

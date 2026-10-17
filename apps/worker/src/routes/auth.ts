@@ -21,8 +21,10 @@ import {
   verifyRefreshToken,
 } from '../lib/jwt.js';
 import {
+  checkForgotPasswordIpRateLimit,
   checkLoginRateLimit,
   checkOtpRateLimit,
+  checkRegisterRateLimit,
   deletePending2fa,
   denylistJti,
   getAndDeletePasskeyChallenge,
@@ -88,11 +90,25 @@ function getRefreshCookie(c: AuthContext): string | null {
 
 async function issueTokens(user: UserRow, jwtSecret: string) {
   const { token: accessToken } = await signAccessToken(
-    { sub: user.id, role: user.role, email: user.email },
+    {
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      tv: user.token_version,
+    },
     jwtSecret,
   );
-  const { token: refreshToken } = await signRefreshToken(user.id, jwtSecret);
+  const { token: refreshToken } = await signRefreshToken(
+    user.id,
+    user.token_version,
+    jwtSecret,
+  );
   return { accessToken, refreshToken };
+}
+
+// Client IP from Cloudflare's verified header (cannot be forged by the client).
+function clientIp(c: AuthContext): string {
+  return c.req.header('cf-connecting-ip') ?? 'unknown';
 }
 
 // ─── Helper: get registration enabled ────────────────────────────────────────
@@ -165,6 +181,15 @@ auth.post('/register', async (c) => {
   const email = body.email.trim().toLowerCase();
   const username = body.username.trim();
   const password = body.password;
+
+  // BE-S6: IP rate limit for registration (10/hour) — bulk account creation guard
+  const registerAllowed = await checkRegisterRateLimit(
+    c.env.LINKS_KV,
+    clientIp(c),
+  );
+  if (!registerAllowed) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+  }
 
   // M4: Input validation
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -422,8 +447,12 @@ auth.post('/login', async (c) => {
 
   const email = body.email.trim().toLowerCase();
 
-  // C1: Rate limit login attempts per email
-  const loginAllowed = await checkLoginRateLimit(c.env.LINKS_KV, email);
+  // C1: Rate limit login attempts per email AND per IP (BE-S6)
+  const loginAllowed = await checkLoginRateLimit(
+    c.env.LINKS_KV,
+    email,
+    clientIp(c),
+  );
   if (!loginAllowed) {
     return c.json(
       { error: 'Too many login attempts. Please try again later.' },
@@ -449,7 +478,7 @@ auth.post('/login', async (c) => {
   }
 
   // C1: Reset failed counter on successful login
-  await resetLoginAttempts(c.env.LINKS_KV, email);
+  await resetLoginAttempts(c.env.LINKS_KV, email, clientIp(c));
 
   const methods = getUserMethods(user);
 
@@ -533,6 +562,13 @@ auth.post('/refresh', async (c) => {
       .first<UserRow>();
     if (!user?.is_active) return c.json({ error: 'User not found' }, 401);
 
+    // BE-S3: If the account's token_version has changed (password change/reset,
+    // admin disable/demote), this refresh token is no longer valid.
+    if (user.token_version !== payload.tv) {
+      clearRefreshCookie(c);
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
     const tokens = await issueTokens(user, c.env.JWT_SECRET);
     setRefreshCookie(c, tokens.refreshToken);
     return c.json({ accessToken: tokens.accessToken });
@@ -602,12 +638,13 @@ auth.post('/change-password', requireAuth, async (c) => {
 
   const newHash = await hashPassword(body.newPassword);
   await c.env.DB.prepare(
-    `UPDATE ${tbl(c.env, 'users')} SET password_hash = ?1, updated_at = unixepoch() WHERE id = ?2`,
+    `UPDATE ${tbl(c.env, 'users')} SET password_hash = ?1, token_version = token_version + 1, updated_at = unixepoch() WHERE id = ?2`,
   )
     .bind(newHash, userId)
     .run();
 
-  // C-3 + S1: Denylist both access and refresh tokens
+  // C-3 + S1: Denylist both access and refresh tokens. BE-S3: token_version bump
+  // above additionally revokes every other active session.
   const accessTtl = Math.max(exp - Math.floor(Date.now() / 1000), 0) + 60;
   await denylistJti(c.env.LINKS_KV, jti, accessTtl);
 
@@ -1557,9 +1594,14 @@ auth.post('/forgot-password', async (c) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return c.json({ success: true });
 
-  // Rate limit using same KV bucket as email OTP
+  // Rate limit using same KV bucket as email OTP, plus an IP dimension (BE-S6)
+  // so an attacker can't mail-bomb arbitrary victim addresses.
   const allowed = await checkOtpRateLimit(c.env.LINKS_KV, email);
-  if (!allowed) {
+  const ipAllowed = await checkForgotPasswordIpRateLimit(
+    c.env.LINKS_KV,
+    clientIp(c),
+  );
+  if (!allowed || !ipAllowed) {
     return c.json({ error: 'Too many requests. Try again later.' }, 429);
   }
 
@@ -1658,7 +1700,7 @@ auth.post('/reset-password', async (c) => {
       `UPDATE ${tbl(c.env, 'verifications')} SET used = 1 WHERE id = ?1`,
     ).bind(verification.id),
     c.env.DB.prepare(
-      `UPDATE ${tbl(c.env, 'users')} SET password_hash = ?1, updated_at = unixepoch() WHERE id = ?2`,
+      `UPDATE ${tbl(c.env, 'users')} SET password_hash = ?1, token_version = token_version + 1, updated_at = unixepoch() WHERE id = ?2`,
     ).bind(newHash, user.id),
   ]);
 

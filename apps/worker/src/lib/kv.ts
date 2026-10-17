@@ -9,6 +9,11 @@ const KV_PREFIX = {
   settingCache: (key: string) => `setting:${key}`,
   // C1: Login brute-force limiting
   loginAttempts: (email: string) => `login_attempts:${email}`,
+  // BE-S6: Per-IP login/register/forgot-password/setup rate limiting
+  loginAttemptsIp: (ip: string) => `login_attempts_ip:${ip}`,
+  registerIp: (ip: string) => `register_rate:${ip}`,
+  forgotPasswordIp: (ip: string) => `forgot_pw_rate:${ip}`,
+  setupRate: (ip: string) => `setup_rate:${ip}`,
   // C2: 2FA verify attempt tracking per pending token (shared by TOTP + email-OTP + passkey/verify)
   twoFaAttempts: (jti: string) => `2fa_attempts:${jti}`,
   // R4-L3: Separate counter for passkey/verify-options so challenge-fetch calls don't burn verify budget
@@ -148,18 +153,25 @@ export async function deletePending2fa(
 // the limit before writes settle. A Cloudflare WAF rate-limit rule is the primary
 // enforcement layer; this provides a defence-in-depth best-effort guard.
 
-export async function checkLoginRateLimit(
+// Fixed-window counter. Returns true (allowed) unless the key is already at
+// `limit`; records the attempt by incrementing the stored count.
+async function fixedWindowIncrement(
   kv: KVNamespace,
-  email: string,
+  key: string,
+  limit: number,
+  windowSec: number,
 ): Promise<boolean> {
-  const key = KV_PREFIX.loginAttempts(email);
   const current = await kv.get(key);
   const now = Math.floor(Date.now() / 1000);
 
   if (!current) {
-    await kv.put(key, JSON.stringify({ count: 1, windowEnd: now + 900 }), {
-      expirationTtl: 900,
-    });
+    await kv.put(
+      key,
+      JSON.stringify({ count: 1, windowEnd: now + windowSec }),
+      {
+        expirationTtl: windowSec,
+      },
+    );
     return true;
   }
 
@@ -167,13 +179,17 @@ export async function checkLoginRateLimit(
   try {
     entry = JSON.parse(current);
   } catch {
-    await kv.put(key, JSON.stringify({ count: 1, windowEnd: now + 900 }), {
-      expirationTtl: 900,
-    });
+    await kv.put(
+      key,
+      JSON.stringify({ count: 1, windowEnd: now + windowSec }),
+      {
+        expirationTtl: windowSec,
+      },
+    );
     return true;
   }
 
-  if (entry.count >= 10) return false;
+  if (entry.count >= limit) return false;
   const remaining = Math.max(entry.windowEnd - now, 1);
   await kv.put(
     key,
@@ -183,11 +199,56 @@ export async function checkLoginRateLimit(
   return true;
 }
 
+// BE-S6: Rate limit login on two dimensions — email (10/15min) and IP (20/15min).
+// Both counters are recorded; a request is blocked if either dimension is over.
+export async function checkLoginRateLimit(
+  kv: KVNamespace,
+  email: string,
+  ip: string,
+): Promise<boolean> {
+  const [emailOk, ipOk] = await Promise.all([
+    fixedWindowIncrement(kv, KV_PREFIX.loginAttempts(email), 10, 900),
+    fixedWindowIncrement(kv, KV_PREFIX.loginAttemptsIp(ip), 20, 900),
+  ]);
+  return emailOk && ipOk;
+}
+
 export async function resetLoginAttempts(
   kv: KVNamespace,
   email: string,
+  ip: string,
 ): Promise<void> {
-  await kv.delete(KV_PREFIX.loginAttempts(email));
+  await Promise.all([
+    kv.delete(KV_PREFIX.loginAttempts(email)),
+    kv.delete(KV_PREFIX.loginAttemptsIp(ip)),
+  ]);
+}
+
+// BE-S6: IP-only rate limit for registration (10/hour) — closes the bulk
+// account-creation gap; /register previously had no rate limiting at all.
+export async function checkRegisterRateLimit(
+  kv: KVNamespace,
+  ip: string,
+): Promise<boolean> {
+  return fixedWindowIncrement(kv, KV_PREFIX.registerIp(ip), 10, 3600);
+}
+
+// BE-S6: IP dimension for forgot-password (10/hour), complementing the existing
+// per-email OTP limit, so an attacker can't mail-bomb arbitrary addresses.
+export async function checkForgotPasswordIpRateLimit(
+  kv: KVNamespace,
+  ip: string,
+): Promise<boolean> {
+  return fixedWindowIncrement(kv, KV_PREFIX.forgotPasswordIp(ip), 10, 3600);
+}
+
+// BE-S5: IP rate limit for the setup/migration endpoint (5/15min) — prevents
+// online brute-forcing of the setup secret.
+export async function checkSetupRateLimit(
+  kv: KVNamespace,
+  ip: string,
+): Promise<boolean> {
+  return fixedWindowIncrement(kv, KV_PREFIX.setupRate(ip), 5, 900);
 }
 
 // ─── 2FA attempt tracking (C2: max 5 per pending token) ──────────────────────

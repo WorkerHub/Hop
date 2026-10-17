@@ -92,6 +92,20 @@ export async function sha256(data: string): Promise<string> {
     .join('');
 }
 
+// Constant-time string comparison — for secrets whose value must not leak
+// through timing (e.g. the setup secret in a header). Always loops over the
+// longer of the two inputs so the duration does not depend on the inputs.
+export function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  let diff = aBytes.length ^ bBytes.length;
+  const len = Math.max(aBytes.length, bBytes.length);
+  for (let i = 0; i < len; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
+}
+
 // AES-256-GCM encrypt (for TOTP secrets)
 // S-3: Cache the imported CryptoKey per keyHex to avoid paying importKey overhead on every call.
 //      Workers isolate memory per-request in some configurations, but within a single request

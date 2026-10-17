@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import { constantTimeEqual } from '../lib/crypto.js';
+import { checkSetupRateLimit } from '../lib/kv.js';
 import type { Env, Variables } from '../types.js';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -127,6 +129,14 @@ CREATE TABLE IF NOT EXISTS ${t('totp_used')} (
 CREATE INDEX IF NOT EXISTS idx_totp_used_at ON ${t('totp_used')}(used_at);
 `,
     },
+    {
+      // BE-S3/S4: per-user token_version — bumping it revokes all of a user's
+      // sessions (password change/reset, admin disable/demote).
+      name: 'schema_v2',
+      sql: `
+ALTER TABLE ${t('users')} ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
+`,
+    },
   ];
 }
 
@@ -144,9 +154,21 @@ function toSingleLine(sql: string): string {
     .trim();
 }
 
-app.get('/:secret', async (c) => {
-  const secret = c.req.param('secret');
-  if (!c.env.SETUP_SECRET || secret !== c.env.SETUP_SECRET) {
+// BE-S5: POST + header secret (kept out of URL/logs), constant-time comparison,
+// and per-IP rate limiting. When SETUP_SECRET is not set the endpoint 404s.
+app.post('/', async (c) => {
+  if (!c.env.SETUP_SECRET) {
+    return c.notFound();
+  }
+
+  const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
+  const allowed = await checkSetupRateLimit(c.env.LINKS_KV, ip);
+  if (!allowed) {
+    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+  }
+
+  const provided = c.req.header('X-Setup-Secret') ?? '';
+  if (!constantTimeEqual(provided, c.env.SETUP_SECRET)) {
     return c.notFound();
   }
 

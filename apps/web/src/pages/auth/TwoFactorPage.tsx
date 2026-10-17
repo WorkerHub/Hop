@@ -25,7 +25,7 @@ export default function TwoFactorPage() {
     pendingMethods,
     clearPendingState,
     refreshUser,
-    broadcastLogin,
+    broadcastRefresh,
   } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -44,7 +44,7 @@ export default function TwoFactorPage() {
   const handleSuccess = (result: LoginResult) => {
     if (result.accessToken) {
       setAccessToken(result.accessToken);
-      broadcastLogin(result.accessToken);
+      broadcastRefresh();
     }
     clearPendingState();
     refreshUser().then(() => navigate('/dashboard'));

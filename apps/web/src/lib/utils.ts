@@ -40,6 +40,18 @@ export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
 
+// FE-S2: Validate that a URL is safe to render as a clickable <a href>. Only
+// http/https are allowed — anything else (javascript:, data:, etc.) is rendered
+// as plain text to prevent XSS if backend validation is ever bypassed.
+export function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function buildShortUrl(slug: string): string {
   return `${window.location.origin}/${slug}`;
 }

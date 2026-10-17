@@ -10,6 +10,7 @@ import {
   copyToClipboard,
   expiryLabel,
   isExpired,
+  isSafeUrl,
 } from '@/lib/utils';
 
 export function LinkSlugCell({ slug }: { slug: string }) {
@@ -34,18 +35,21 @@ export function LinkSlugCell({ slug }: { slug: string }) {
 }
 
 export function LinkDestinationCell({ url }: { url: string }) {
+  // FE-S2: Only render the URL as a clickable link when its protocol is http/https.
   return (
     <td className="px-4 py-3 max-w-xs">
       <div className="flex items-center gap-1 truncate">
         <span className="truncate text-muted-foreground">{url}</span>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        {isSafeUrl(url) && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
     </td>
   );
