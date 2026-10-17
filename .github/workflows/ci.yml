@@ -41,6 +41,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Deploy scripts: local D1 migration scenarios plus smoke/verify checks.
+      # No Cloudflare credentials needed.
+      - name: Shellcheck deploy scripts
+        run: shellcheck .github/scripts/*.sh
+
+      - name: Test deploy scripts
+        run: node --test .github/scripts/test-d1-migrations.mjs .github/scripts/test-deploy-checks.mjs
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

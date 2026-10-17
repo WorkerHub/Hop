@@ -94,8 +94,23 @@ This will deploy the code to Cloudflare Workers.
 
 ### 6. Run database migrations
 
-After deploying, trigger the migrations once via a `POST` request with the setup
-secret in a header (it is no longer accepted in the URL):
+The Deploy workflow applies migrations automatically **before** deploying the code.
+Without a prefix it uses `wrangler d1 migrations apply` as before. With `TABLE_PREFIX`
+set it applies the migrations from `apps/worker/src/lib/migrations.ts` (the same ones
+the setup route runs), skips those already recorded in `_<prefix>_schema_migrations`,
+and prints the planned migrations in the log. Migrations must stay backward compatible:
+only add tables, indexes or columns — never drop, rename or rewrite existing data.
+
+When using a prefix, set `TABLE_PREFIX` under the GitHub **production environment →
+Variables** to exactly the same value as the Worker's `TABLE_PREFIX` **plain-text
+variable** in Cloudflare (e.g. `SL`; letters, digits and underscores only). Do not store
+it as a secret, and do not change it once data exists. The GitHub `APP_URL` variable must
+point at the production URL. `CLOUDFLARE_API_TOKEN` needs edit access to the D1 database
+and edit/version-read access to the Worker.
+
+You no longer need to call `/setup` after each deploy. For manual deployments or
+emergencies it can still be triggered with a `POST` request carrying the setup secret in
+a header (it is no longer accepted in the URL):
 
 ```
 curl -X POST https://your-worker.workers.dev/setup \
@@ -111,7 +126,13 @@ Response on success:
 }
 ```
 
-Re-visiting is safe — already-applied migrations return `"skipped"`. Run it again after future migrations are added.
+Re-running it is safe — already-applied migrations return `"skipped"`.
+
+After deploying, the workflow first confirms through the Cloudflare API that the uploaded
+version serves 100% of production traffic, then probes the public URL. A `403` carrying
+`cf-mitigated: challenge` (e.g. Bot Fight Mode challenging the CI runner) only produces a
+warning, since the HTTP/database check could not run; any other non-2xx status or an
+unexpected JSON body fails the deploy. Bot Fight Mode can stay enabled.
 
 ### 7. First login
 
