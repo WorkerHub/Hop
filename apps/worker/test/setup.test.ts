@@ -70,6 +70,13 @@ test('GET /api/setup/*: 返回 405 + Allow: POST', async () => {
   assert.match(body.error, /POST \/api\/setup/);
 });
 
+test('GET /setup/*: 旧路径别名同样返回 405 + Allow: POST', async () => {
+  const ctx = makeEnv();
+  const res = await request(app, '/setup/anything', { method: 'GET' }, ctx);
+  assert.equal(res.status, 405);
+  assert.equal(res.headers.get('Allow'), 'POST');
+});
+
 // ─── POST /api/setup ──────────────────────────────────────────────────────────
 
 test('POST /api/setup: 正确 JSON 密钥把迁移应用到空库并返回结果', async () => {
@@ -148,6 +155,24 @@ test('POST /api/setup: 旧 X-Setup-Secret 头方式仍可用', async () => {
       headers: {
         'X-Setup-Secret': 'test-setup-secret',
         'cf-connecting-ip': '5.5.5.5',
+      },
+    },
+    ctx,
+  );
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray((await res.json()).migrations));
+});
+
+test('POST /setup: 旧路径别名 + X-Setup-Secret 头仍可用', async () => {
+  const ctx = makeEnv({ DB: new D1Mock(false) as unknown as Env['DB'] });
+  const res = await request(
+    app,
+    '/setup',
+    {
+      method: 'POST',
+      headers: {
+        'X-Setup-Secret': 'test-setup-secret',
+        'cf-connecting-ip': '5.5.5.6',
       },
     },
     ctx,
