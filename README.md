@@ -108,13 +108,15 @@ it as a secret, and do not change it once data exists. The GitHub `APP_URL` vari
 point at the production URL. `CLOUDFLARE_API_TOKEN` needs edit access to the D1 database
 and edit/version-read access to the Worker.
 
-You no longer need to call `/setup` after each deploy. For manual deployments or
-emergencies it can still be triggered with a `POST` request carrying the setup secret in
-a header (it is no longer accepted in the URL):
+You no longer need to call the setup endpoint after each deploy. For manual
+deployments or emergencies it can still be triggered with a `POST` request carrying the
+setup secret in a JSON body (the legacy `X-Setup-Secret` header still works, and the
+secret is no longer accepted in the URL):
 
 ```
-curl -X POST https://your-worker.workers.dev/setup \
-  -H "X-Setup-Secret: <SETUP_SECRET>"
+curl -X POST https://your-worker.workers.dev/api/setup \
+  -H "Content-Type: application/json" \
+  -d '{"secret": "<SETUP_SECRET>"}'
 ```
 
 Response on success:
@@ -126,7 +128,13 @@ Response on success:
 }
 ```
 
-Re-running it is safe — already-applied migrations return `"skipped"`.
+Re-running it is safe — already-applied migrations return `"skipped"`. The endpoint is
+rate-limited to 3 attempts per IP per 10 minutes (once exceeded it returns `429` with a
+`Retry-After` header). `GET /api/setup/state` reports `{ "enabled": true | false }` based
+on the `setup_page_enabled` setting (defaults to enabled when unset); it only hides the
+setup page, it does not disable the `POST` migration channel. When logged in as an admin,
+migrations can also be run from the admin panel via `POST /api/admin/setup` — no setup
+secret needed, not IP rate-limited, and each run is written to the audit log.
 
 After deploying, the workflow first confirms through the Cloudflare API that the uploaded
 version serves 100% of production traffic, then probes the public URL. A `403` carrying
@@ -240,6 +248,14 @@ The Vite dev server proxies `/api` requests to `:8787` automatically.
 | DELETE | `/api/admin/links/:id` | Delete any link |
 | GET | `/api/admin/settings` | Get global settings |
 | PUT | `/api/admin/settings` | Update global settings |
+| POST | `/api/admin/setup` | Run schema migrations as admin (no setup secret; writes an audit log) |
+
+### Setup (unauthenticated)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/setup/state` | Public — `{ "enabled": true \| false }` from `setup_page_enabled` |
+| POST | `/api/setup` | Run schema migrations; JSON body `{"secret": "<SETUP_SECRET>"}` (legacy `X-Setup-Secret` header also works), 3 attempts / IP / 10 min |
 
 ### Miscellaneous
 
@@ -289,6 +305,7 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 | `smtp_from` | email address | Sender address, e.g. `noreply@example.com` |
 | `smtp_user` | string | SMTP username (leave blank for unauthenticated relay) |
 | `smtp_pass` | string | SMTP password (stored in D1) |
+| `setup_page_enabled` | `0` / `1` | Show (`1`) or hide (`0`) the setup page; only affects page visibility, never the `POST /api/setup` migration channel |
 
 ---
 

@@ -107,12 +107,13 @@ GitHub Actions 会在部署代码**之前**自动执行迁移：无前缀时仍�
 不要把它设为 Secret，也不要在已有数据后更换前缀。GitHub 中的 `APP_URL` 也必须指向生产地址。
 现有 `CLOUDFLARE_API_TOKEN` 需要有目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。
 
-无需在每次部署后调用 `/setup`。手动部署或应急操作仍可通过 `POST` 请求触发，
-密钥放在请求头中（不再通过 URL 传递）：
+无需在每次部署后调用 setup 接口。手动部署或应急操作仍可通过 `POST` 请求触发，
+密钥放在 JSON body 中（旧的 `X-Setup-Secret` 请求头仍兼容，密钥不再通过 URL 传递）：
 
 ```
-curl -X POST https://your-worker.workers.dev/setup \
-  -H "X-Setup-Secret: <SETUP_SECRET>"
+curl -X POST https://your-worker.workers.dev/api/setup \
+  -H "Content-Type: application/json" \
+  -d '{"secret": "<SETUP_SECRET>"}'
 ```
 
 成功响应：
@@ -124,7 +125,11 @@ curl -X POST https://your-worker.workers.dev/setup \
 }
 ```
 
-重复调用是安全的，已执行的迁移会返回 `"skipped"`。自动部署不需要手动调用。
+重复调用是安全的，已执行的迁移会返回 `"skipped"`。该接口按 IP 限流为每 10 分钟 3 次
+（超限返回 `429` 并带 `Retry-After` 头）。`GET /api/setup/state` 返回
+`{ "enabled": true | false }`，反映 `setup_page_enabled` 设置（未设置时默认启用），
+它只隐藏 setup 页面、不会关闭 `POST` 迁移通道。以管理员身份登录后，也可在管理面板
+通过 `POST /api/admin/setup` 触发迁移 — 无需 setup 密钥、不受 IP 限流，且每次执行都会写入审计日志。
 部署后还会通过 Cloudflare API 核对本次上传的版本承载 100% 流量，再检查公开 URL。
 公开 URL 返回带 `cf-mitigated: challenge` 的 403 时仅警告（HTTP/数据库检查未能验证），
 其余非 2xx 或错误的 JSON 均失败；无需关闭 Bot Fight Mode。
@@ -235,6 +240,14 @@ Vite 开发服务器会自动将 `/api` 请求代理到 `:8787`。
 | DELETE | `/api/admin/links/:id` | 删除任意链接 |
 | GET | `/api/admin/settings` | 获取全局设置 |
 | PUT | `/api/admin/settings` | 更新全局设置 |
+| POST | `/api/admin/setup` | 以管理员身份执行数据库迁移（无需 setup 密钥；写入审计日志） |
+
+### Setup（无需认证）
+
+| 方法 | 路径 | 描述 |
+|---|---|---|
+| GET | `/api/setup/state` | 公开接口 — 根据 `setup_page_enabled` 返回 `{ "enabled": true \| false }` |
+| POST | `/api/setup` | 执行数据库迁移；JSON body `{"secret": "<SETUP_SECRET>"}`（旧的 `X-Setup-Secret` 请求头仍兼容），每 IP 每 10 分钟限 3 次 |
 
 ### 其他
 
@@ -284,6 +297,7 @@ GET /:slug  →  302 跳转到目标 URL
 | `smtp_from` | 邮件地址 | 发件人地址，例如 `noreply@example.com` |
 | `smtp_user` | 字符串 | SMTP 用户名（留空则使用未认证中继） |
 | `smtp_pass` | 字符串 | SMTP 密码（存储在 D1 中） |
+| `setup_page_enabled` | `0` / `1` | 显示（`1`）或隐藏（`0`）setup 页面；只影响页面可见性，绝不关闭 `POST /api/setup` 迁移通道 |
 
 ---
 

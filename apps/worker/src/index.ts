@@ -116,6 +116,9 @@ app.route('/api/analytics', analyticsRoutes);
 app.route('/api/admin', adminRoutes);
 
 // ─── Setup / migration endpoint ───────────────────────────────────────────────
+// Mounted at /api/setup to match the rest of the public API; /setup is kept as a
+// backward-compatible alias for callers that predate the /api prefix.
+app.route('/api/setup', setupRoutes);
 app.route('/setup', setupRoutes);
 
 // ─── Health check ─────────────────────────────────────────────────────────────

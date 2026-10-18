@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { hashPassword } from '../lib/crypto.js';
 import { isUniqueConstraintError, tbl } from '../lib/db.js';
 import { deleteCachedLink, deleteCachedSetting } from '../lib/kv.js';
+import { runMigrations } from '../lib/migrations-runner.js';
 import { parsePagination } from '../lib/params.js';
 import { requireAdmin } from '../middleware/auth.js';
 import type { Env, LinkRow, UserRow, Variables } from '../types.js';
@@ -389,6 +390,7 @@ admin.put('/settings', async (c) => {
     'smtp_user',
     'smtp_pass',
     'smtp_from',
+    'setup_page_enabled',
   ]);
 
   // FE-S3/BE-S1: An empty or masked ("***") secret means "leave unchanged".
@@ -425,6 +427,13 @@ admin.put('/settings', async (c) => {
   const providerEntry = updates.find(([k]) => k === 'email_provider');
   if (providerEntry && !['resend', 'smtp'].includes(providerEntry[1])) {
     return c.json({ error: 'email_provider must be "resend" or "smtp"' }, 400);
+  }
+
+  // FE-S13: setup_page_enabled only toggles the setup page's visibility; it is
+  // stored as '0'/'1' (not 'true'/'false') and is not a secret.
+  const setupPageEntry = updates.find(([k]) => k === 'setup_page_enabled');
+  if (setupPageEntry && !['0', '1'].includes(setupPageEntry[1])) {
+    return c.json({ error: 'setup_page_enabled must be "0" or "1"' }, 400);
   }
 
   const portEntry = updates.find(([k]) => k === 'smtp_port');
@@ -513,6 +522,35 @@ admin.delete('/links/:id', async (c) => {
   await auditLog(c.env, adminId, 'delete_link', id, { slug: existing.slug });
 
   return c.json({ success: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/setup
+// ─────────────────────────────────────────────────────────────────────────────
+// Runs the same schema-migration routine as POST /api/setup, but keyed to the
+// admin session instead of SETUP_SECRET (and not rate-limited per IP — the
+// admin is already authenticated). Because no admin account exists before the
+// database is initialised, this covers the "check & upgrade" case after
+// first-time setup; the initial setup still happens through POST /api/setup.
+admin.post('/setup', async (c) => {
+  const adminId = c.get('userId');
+  const result = await runMigrations(c.env);
+
+  const applied = result.migrations.filter(
+    (m) => m.status === 'applied',
+  ).length;
+  const skipped = result.migrations.filter(
+    (m) => m.status === 'skipped',
+  ).length;
+  const errored = result.migrations.filter((m) => m.status === 'error').length;
+
+  await auditLog(c.env, adminId, 'run_setup', 'setup', {
+    applied,
+    skipped,
+    error: errored,
+  });
+
+  return c.json(result);
 });
 
 export default admin;
