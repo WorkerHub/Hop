@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import type { SetupResult } from '@/api/client';
 import { adminApi } from '@/api/client';
+import { SetupMigrationsResult } from '@/components/setup-migrations';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -15,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAppConfig } from '@/contexts/AppConfigContext';
 import { useTranslation } from '@/i18n';
+import type { SetupErrorMsg } from '@/lib/setup';
+import { formatSetupError, resolveSetupError } from '@/lib/setup';
 import { toastApiError } from '@/lib/toast';
 
 export default function AdminSettingsPage() {
@@ -51,6 +55,16 @@ export default function AdminSettingsPage() {
   const [resendKeyIsSet, setResendKeyIsSet] = useState(false);
   const [smtpPassIsSet, setSmtpPassIsSet] = useState(false);
 
+  // Setup page toggle + "check & upgrade database" action
+  const [setupPageEnabled, setSetupPageEnabled] = useState(true);
+  const [runSetupLoading, setRunSetupLoading] = useState(false);
+  const [runSetupResult, setRunSetupResult] = useState<SetupResult | null>(
+    null,
+  );
+  const [runSetupError, setRunSetupError] = useState<SetupErrorMsg | null>(
+    null,
+  );
+
   useEffect(() => {
     if (data?.settings) {
       const s = data.settings;
@@ -70,6 +84,8 @@ export default function AdminSettingsPage() {
       setSmtpPass('');
       setSmtpPassIsSet(s.smtp_pass === '***');
       setSmtpFrom(s.smtp_from ?? '');
+      // FE-S13: setup_page_enabled is stored as '0'/'1'; absent defaults to on.
+      setSetupPageEnabled(s.setup_page_enabled !== '0');
     }
   }, [data]);
 
@@ -147,6 +163,34 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleSetupPageToggle = async (enabled: boolean) => {
+    setSetupPageEnabled(enabled);
+    try {
+      await adminApi.updateSettings({
+        setup_page_enabled: enabled ? '1' : '0',
+      });
+      toast.success(
+        enabled ? t('toast.setupPageEnabled') : t('toast.setupPageDisabled'),
+      );
+    } catch (err) {
+      setSetupPageEnabled(!enabled);
+      toastApiError(err, t('toast.requestFailed'), t);
+    }
+  };
+
+  const handleRunSetup = async () => {
+    setRunSetupLoading(true);
+    setRunSetupError(null);
+    setRunSetupResult(null);
+    try {
+      setRunSetupResult(await adminApi.runSetup());
+    } catch (err) {
+      setRunSetupError(resolveSetupError(err));
+    } finally {
+      setRunSetupLoading(false);
+    }
+  };
+
   if (isLoading)
     return (
       <div className="p-6 text-muted-foreground">{t('common.loading')}</div>
@@ -202,6 +246,33 @@ export default function AdminSettingsPage() {
                 {requireEmailVerification
                   ? t('admin.emailVerificationRequired')
                   : t('admin.emailVerificationNotRequired')}
+              </strong>
+            </Label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Setup page toggle */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {t('admin.setupPageToggle')}
+          </CardTitle>
+          <CardDescription>{t('admin.setupPageDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="setup-page-toggle"
+              checked={setupPageEnabled}
+              onCheckedChange={handleSetupPageToggle}
+            />
+            <Label htmlFor="setup-page-toggle">
+              {t('admin.setupPageCurrent')}{' '}
+              <strong>
+                {setupPageEnabled
+                  ? t('admin.setupPageEnabled')
+                  : t('admin.setupPageDisabled')}
               </strong>
             </Label>
           </div>
@@ -395,6 +466,38 @@ export default function AdminSettingsPage() {
               {t('common.save')}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Check & upgrade database */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t('admin.runSetup')}</CardTitle>
+          <CardDescription>{t('admin.runSetupDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button
+            type="button"
+            onClick={handleRunSetup}
+            loading={runSetupLoading}
+          >
+            {runSetupLoading ? t('setup.submitting') : t('admin.runSetup')}
+          </Button>
+
+          {runSetupError && (
+            <p className="text-sm text-destructive" role="alert">
+              {formatSetupError(runSetupError, t)}
+            </p>
+          )}
+
+          {runSetupResult && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                {t('setup.migrationsTitle')}
+              </p>
+              <SetupMigrationsResult migrations={runSetupResult.migrations} />
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

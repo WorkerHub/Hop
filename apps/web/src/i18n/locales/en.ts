@@ -183,6 +183,29 @@ export const en = {
     remove: 'Remove',
     passwordsDoNotMatch: 'Passwords do not match',
   },
+  setup: {
+    title: 'Database Setup',
+    titleDesc: 'Initialize or upgrade the database schema.',
+    secretLabel: 'Setup Secret',
+    secretPlaceholder: 'Enter the setup secret',
+    submit: 'Initialize / Upgrade Database',
+    submitting: 'Running migrations…',
+    disabledTitle: 'Setup page is disabled',
+    disabledDesc:
+      'The public setup page has been turned off. An administrator can still check and upgrade the database from the admin settings, or use the POST endpoint with the setup secret as an emergency channel.',
+    migrationsTitle: 'Migration Results',
+    noMigrations: 'No migrations were reported.',
+    statusApplied: 'applied',
+    statusSkipped: 'skipped',
+    statusError: 'error',
+    errorBadRequest:
+      'Invalid request. A JSON body {"secret": "…"} is required.',
+    errorForbidden: 'Invalid setup secret.',
+    errorTooManyRequests: 'Too many requests. Try again in {{seconds}}s.',
+    errorServer: 'The server is not configured, or the migration failed.',
+    errorNotFound: 'The backend has not provided this endpoint yet.',
+    errorGeneric: 'Setup failed. Please try again.',
+  },
   admin: {
     adminPanel: 'Admin Panel',
     users: 'Users',
@@ -223,6 +246,15 @@ export const en = {
     emailVerificationDisabled: 'Email verification disabled',
     emailVerificationRequired: 'required',
     emailVerificationNotRequired: 'not required',
+    setupPageToggle: 'Public Setup Page',
+    setupPageDesc:
+      'Show the public /setup page. This only hides the page — the keyed POST endpoint stays available as an emergency channel.',
+    setupPageCurrent: 'Setup page is currently',
+    setupPageEnabled: 'enabled',
+    setupPageDisabled: 'disabled',
+    runSetup: 'Check & Upgrade Database',
+    runSetupDesc:
+      'Run pending database migrations. Already-applied migrations are reported as skipped.',
   },
   toast: {
     sessionExpired: 'Session expired. Please sign in again.',
@@ -260,6 +292,8 @@ export const en = {
     registrationDisabled: 'Registration disabled',
     appNameUpdated: 'App name updated',
     emailSettingsSaved: 'Email settings saved',
+    setupPageEnabled: 'Setup page enabled',
+    setupPageDisabled: 'Setup page disabled',
   },
   errors: {
     emailOrUsernameTaken: 'This email or username is already taken.',

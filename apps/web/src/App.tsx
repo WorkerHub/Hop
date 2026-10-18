@@ -20,6 +20,7 @@ const ForgotPasswordPage = lazy(
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.tsx'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage.tsx'));
 const TwoFactorPage = lazy(() => import('./pages/auth/TwoFactorPage.tsx'));
+const SetupPage = lazy(() => import('./pages/SetupPage.tsx'));
 const AnalyticsPage = lazy(() => import('./pages/dashboard/AnalyticsPage.tsx'));
 const LinksPage = lazy(() => import('./pages/dashboard/LinksPage.tsx'));
 const SettingsPage = lazy(() => import('./pages/dashboard/SettingsPage.tsx'));
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/two-factor" element={<TwoFactorPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/setup" element={<SetupPage />} />
 
         {/* Dashboard */}
         <Route
