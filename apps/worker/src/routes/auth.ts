@@ -378,7 +378,12 @@ auth.post('/verify-email', async (c) => {
     .catch(() => null);
   if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.userId || !body.code || body.code.length > 6) {
-    return c.json({ error: 'userId and code required' }, 400);
+    return apiError(
+      c,
+      400,
+      'USER_ID_AND_CODE_REQUIRED',
+      'userId and code required',
+    );
   }
 
   const user = await c.env.DB.prepare(
@@ -388,7 +393,12 @@ auth.post('/verify-email', async (c) => {
     .first<UserRow>();
 
   if (!user || user.is_active) {
-    return c.json({ error: 'Invalid or expired verification' }, 400);
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_VERIFICATION',
+      'Invalid or expired verification',
+    );
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -399,7 +409,12 @@ auth.post('/verify-email', async (c) => {
     .first<{ id: string; code_hash: string; attempts: number }>();
 
   if (!verification) {
-    return c.json({ error: 'Invalid or expired verification code' }, 400);
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_VERIFICATION_CODE',
+      'Invalid or expired verification code',
+    );
   }
 
   if (verification.attempts >= 3) {
@@ -449,7 +464,8 @@ auth.post('/verify-email', async (c) => {
 auth.post('/resend-verify-email', async (c) => {
   const body = await c.req.json<{ userId: string }>().catch(() => null);
   if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
-  if (!body.userId) return c.json({ error: 'userId required' }, 400);
+  if (!body.userId)
+    return apiError(c, 400, 'USER_ID_REQUIRED', 'userId required');
 
   const user = await c.env.DB.prepare(
     `SELECT * FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
@@ -628,7 +644,12 @@ auth.post('/refresh', async (c) => {
     payload = await verifyRefreshToken(refreshToken, c.env.JWT_SECRET);
   } catch {
     clearRefreshCookie(c);
-    return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_REFRESH_TOKEN',
+      'Invalid or expired refresh token',
+    );
   }
 
   try {
@@ -665,7 +686,12 @@ auth.post('/refresh', async (c) => {
   } catch (err) {
     // Infrastructure failure: keep the cookie, report a retryable 503.
     console.error('refresh failed', err instanceof Error ? err.name : err);
-    return c.json({ error: 'Service temporarily unavailable' }, 503);
+    return apiError(
+      c,
+      503,
+      'SERVICE_UNAVAILABLE',
+      'Service temporarily unavailable',
+    );
   }
 });
 
@@ -1448,7 +1474,12 @@ auth.post('/2fa/passkey/register-options', requireAuth, async (c) => {
     .all<Pick<PasskeyRow, 'id' | 'transports'>>();
 
   if (existingPasskeys.results.length >= 10) {
-    return c.json({ error: 'Maximum of 10 passkeys allowed per account' }, 400);
+    return apiError(
+      c,
+      400,
+      'TOO_MANY_PASSKEYS',
+      'Maximum of 10 passkeys allowed per account',
+    );
   }
 
   const options = await generateRegistrationOptions({
@@ -1502,9 +1533,11 @@ auth.post('/2fa/passkey/register-verify', requireAuth, async (c) => {
   }
 
   if (body.name && body.name.length > 64) {
-    return c.json(
-      { error: 'Passkey name must be 64 characters or fewer' },
+    return apiError(
+      c,
       400,
+      'PASSKEY_NAME_TOO_LONG',
+      'Passkey name must be 64 characters or fewer',
     );
   }
 
@@ -1856,7 +1889,12 @@ auth.post('/verify-reset-code', async (c) => {
     .json<{ email: string; code: string }>()
     .catch(() => null);
   if (!body?.email || !body?.code || body.code.length > 6) {
-    return c.json({ error: 'email and code are required' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_AND_CODE_REQUIRED',
+      'email and code are required',
+    );
   }
 
   const email = body.email.trim().toLowerCase();
@@ -1865,7 +1903,13 @@ auth.post('/verify-reset-code', async (c) => {
   )
     .bind(email)
     .first<{ id: string }>();
-  if (!user) return c.json({ error: 'Invalid or expired code' }, 400);
+  if (!user)
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CODE',
+      'Invalid or expired code',
+    );
 
   const now = Math.floor(Date.now() / 1000);
   const verification = await c.env.DB.prepare(
@@ -1874,7 +1918,13 @@ auth.post('/verify-reset-code', async (c) => {
     .bind(email, now)
     .first<{ id: string; code_hash: string; attempts: number }>();
 
-  if (!verification) return c.json({ error: 'Invalid or expired code' }, 400);
+  if (!verification)
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CODE',
+      'Invalid or expired code',
+    );
 
   if (verification.attempts >= 3) {
     return apiError(
@@ -1981,7 +2031,12 @@ auth.post('/reset-password', async (c) => {
     .catch(() => null);
   if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.email || !body.code || !body.newPassword) {
-    return c.json({ error: 'email, code, and newPassword are required' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_CODE_NEW_PASSWORD_REQUIRED',
+      'email, code, and newPassword are required',
+    );
   }
   if (body.code.length > 6)
     return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
@@ -2002,7 +2057,13 @@ auth.post('/reset-password', async (c) => {
   )
     .bind(email)
     .first<{ id: string }>();
-  if (!user) return c.json({ error: 'Invalid or expired code' }, 400);
+  if (!user)
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CODE',
+      'Invalid or expired code',
+    );
 
   const now = Math.floor(Date.now() / 1000);
   const verification = await c.env.DB.prepare(
@@ -2011,7 +2072,13 @@ auth.post('/reset-password', async (c) => {
     .bind(email, now)
     .first<{ id: string; code_hash: string; attempts: number }>();
 
-  if (!verification) return c.json({ error: 'Invalid or expired code' }, 400);
+  if (!verification)
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CODE',
+      'Invalid or expired code',
+    );
 
   if (verification.attempts >= 3) {
     return apiError(

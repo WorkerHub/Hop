@@ -38,6 +38,35 @@ test('非 /api 路径仍然回退到 SPA（ASSETS）', async () => {
   assert.equal(await res.text(), 'assets');
 });
 
+test('GET /api/health 仍返回 200（兜底不影响已有路由）', async () => {
+  const ctx = makeEnv();
+  const res = await request(app, '/api/health', { method: 'GET' }, ctx);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.status, 'ok');
+});
+
+test('OPTIONS /api/* 预检仍由 CORS 处理（204 + Allow-Origin）', async () => {
+  const ctx = makeEnv();
+  const res = await request(
+    app,
+    '/api/anything',
+    {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://example.com',
+        'Access-Control-Request-Method': 'POST',
+      },
+    },
+    ctx,
+  );
+  assert.equal(res.status, 204);
+  assert.equal(
+    res.headers.get('Access-Control-Allow-Origin'),
+    'https://example.com',
+  );
+});
+
 test('注册已被占用的邮箱返回 409 且带 EMAIL_OR_USERNAME_TAKEN 码', async () => {
   const ctx = makeEnv();
   await seedUser(ctx.db, {
