@@ -153,14 +153,16 @@ export async function deletePending2fa(
 // the limit before writes settle. A Cloudflare WAF rate-limit rule is the primary
 // enforcement layer; this provides a defence-in-depth best-effort guard.
 
-// Fixed-window counter. Returns true (allowed) unless the key is already at
-// `limit`; records the attempt by incrementing the stored count.
-async function fixedWindowIncrement(
+// Fixed-window counter. Records the attempt by incrementing the stored count,
+// then reports whether it is still within `limit`. The detailed variant also
+// returns how many seconds remain in the current window so callers can send an
+// exact Retry-After header.
+async function fixedWindowIncrementWithRetry(
   kv: KVNamespace,
   key: string,
   limit: number,
   windowSec: number,
-): Promise<boolean> {
+): Promise<{ allowed: boolean; retryAfter: number }> {
   const current = await kv.get(key);
   const now = Math.floor(Date.now() / 1000);
 
@@ -172,7 +174,7 @@ async function fixedWindowIncrement(
         expirationTtl: windowSec,
       },
     );
-    return true;
+    return { allowed: true, retryAfter: 0 };
   }
 
   let entry: { count: number; windowEnd: number };
@@ -186,17 +188,33 @@ async function fixedWindowIncrement(
         expirationTtl: windowSec,
       },
     );
-    return true;
+    return { allowed: true, retryAfter: 0 };
   }
 
-  if (entry.count >= limit) return false;
+  if (entry.count >= limit) {
+    return {
+      allowed: false,
+      retryAfter: Math.max(entry.windowEnd - now, 0),
+    };
+  }
   const remaining = Math.max(entry.windowEnd - now, 1);
   await kv.put(
     key,
     JSON.stringify({ count: entry.count + 1, windowEnd: entry.windowEnd }),
     { expirationTtl: remaining },
   );
-  return true;
+  return { allowed: true, retryAfter: 0 };
+}
+
+// Boolean convenience wrapper for callers that only need allow/deny.
+async function fixedWindowIncrement(
+  kv: KVNamespace,
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<boolean> {
+  return (await fixedWindowIncrementWithRetry(kv, key, limit, windowSec))
+    .allowed;
 }
 
 // BE-S6: Rate limit login on two dimensions — email (10/15min) and IP (20/15min).
@@ -242,13 +260,15 @@ export async function checkForgotPasswordIpRateLimit(
   return fixedWindowIncrement(kv, KV_PREFIX.forgotPasswordIp(ip), 10, 3600);
 }
 
-// BE-S5: IP rate limit for the setup/migration endpoint (5/15min) — prevents
-// online brute-forcing of the setup secret.
+// BE-S5: IP rate limit for the setup/migration endpoint (3/10min) — prevents
+// online brute-forcing of the setup secret. Returns whether the attempt is
+// allowed and, when not, how many seconds remain in the window so the caller
+// can send an exact Retry-After header.
 export async function checkSetupRateLimit(
   kv: KVNamespace,
   ip: string,
-): Promise<boolean> {
-  return fixedWindowIncrement(kv, KV_PREFIX.setupRate(ip), 5, 900);
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  return fixedWindowIncrementWithRetry(kv, KV_PREFIX.setupRate(ip), 3, 600);
 }
 
 // ─── 2FA attempt tracking (C2: max 5 per pending token) ──────────────────────

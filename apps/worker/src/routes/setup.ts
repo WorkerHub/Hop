@@ -1,82 +1,107 @@
 import { Hono } from 'hono';
 import { constantTimeEqual } from '../lib/crypto.js';
+import { tbl } from '../lib/db.js';
 import { checkSetupRateLimit } from '../lib/kv.js';
-import {
-  createMigrationsTableSql,
-  getMigrations,
-  migrationsTable,
-} from '../lib/migrations.js';
+import { runMigrations } from '../lib/migrations-runner.js';
 import type { Env, Variables } from '../types.js';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// D1's exec() only processes the first line of a multi-line string.
-// Strip SQL line comments and collapse all whitespace to a single line.
-function toSingleLine(sql: string): string {
-  return sql
-    .split('\n')
-    .map((line) => {
-      const idx = line.indexOf('--');
-      return idx >= 0 ? line.slice(0, idx) : line;
-    })
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// ─── GET /api/setup/state ────────────────────────────────────────────────────
+// Public and unauthenticated: only reports whether the setup page is enabled,
+// leaking nothing else (not whether the database is initialised, its schema, or
+// its version). A missing settings table (database not yet initialised) and a
+// missing row both mean the default: enabled. Registered before the GET '/*'
+// 405 fallback below so it is not swallowed by it.
+app.get('/state', async (c) => {
+  let value: string | null = null;
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT value FROM ${tbl(c.env, 'settings')} WHERE key = 'setup_page_enabled'`,
+    ).first<{ value: string }>();
+    value = row?.value ?? null;
+  } catch {
+    // settings table does not exist yet — the database has not been initialised
+  }
+  return c.json({ enabled: value !== '0' });
+});
 
-// BE-S5: POST + header secret (kept out of URL/logs), constant-time comparison,
-// and per-IP rate limiting. When SETUP_SECRET is not set the endpoint 404s.
+// ─── GET /api/setup/* (legacy) ───────────────────────────────────────────────
+// The old GET /api/setup/:secret form put the secret in the URL (history, logs,
+// Referer). It never initialises anything now; it only points callers at the
+// POST form.
+app.get('/*', (c) =>
+  c.json(
+    {
+      error:
+        'Use POST /api/setup with a JSON body {"secret": "<SETUP_SECRET>"}.',
+    },
+    405,
+    { Allow: 'POST' },
+  ),
+);
+
+// ─── POST /api/setup ─────────────────────────────────────────────────────────
 app.post('/', async (c) => {
-  if (!c.env.SETUP_SECRET) {
-    return c.notFound();
-  }
-
+  // Rate-limit by source IP before anything else — including the secret
+  // comparison — so a wrong secret cannot be brute-forced unthrottled. Success
+  // and failure both count.
   const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
-  const allowed = await checkSetupRateLimit(c.env.LINKS_KV, ip);
+  const { allowed, retryAfter } = await checkSetupRateLimit(c.env.LINKS_KV, ip);
   if (!allowed) {
-    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+    return c.json({ error: 'Too many setup attempts. Try again later.' }, 429, {
+      'Retry-After': String(retryAfter),
+    });
   }
 
-  const provided = c.req.header('X-Setup-Secret') ?? '';
-  if (!constantTimeEqual(provided, c.env.SETUP_SECRET)) {
-    return c.notFound();
+  const expected = c.env.SETUP_SECRET;
+  if (!expected || expected.trim() === '') {
+    return c.json(
+      { error: 'SETUP_SECRET is not configured on this Worker.' },
+      500,
+    );
   }
 
-  const prefix = c.env.TABLE_PREFIX ?? '';
-  const historyTable = migrationsTable(prefix);
-
-  // Use prepare().run() for single-statement DDL — avoids exec()'s newline limitation
-  await c.env.DB.prepare(createMigrationsTableSql(prefix)).run();
-
-  const { results } = await c.env.DB.prepare(
-    `SELECT name FROM ${historyTable}`,
-  ).all<{ name: string }>();
-  const applied = new Set(results.map((r) => r.name));
-
-  const log: {
-    name: string;
-    status: 'applied' | 'skipped' | 'error';
-    error?: string;
-  }[] = [];
-
-  for (const migration of getMigrations(prefix)) {
-    if (applied.has(migration.name)) {
-      log.push({ name: migration.name, status: 'skipped' });
-      continue;
-    }
+  // Primary channel: a JSON body {"secret": "<SETUP_SECRET>"}. For backward
+  // compatibility with callers that predate the JSON body, an empty body falls
+  // back to the X-Setup-Secret header.
+  const raw = await c.req.text();
+  let provided: string;
+  if (raw.trim() === '') {
+    provided = c.req.header('X-Setup-Secret') ?? '';
+  } else {
+    let body: unknown;
     try {
-      await c.env.DB.exec(toSingleLine(migration.sql));
-      await c.env.DB.prepare(`INSERT INTO ${historyTable} (name) VALUES (?)`)
-        .bind(migration.name)
-        .run();
-      log.push({ name: migration.name, status: 'applied' });
-    } catch (err) {
-      log.push({ name: migration.name, status: 'error', error: String(err) });
-      break;
+      body = JSON.parse(raw);
+    } catch {
+      return c.json(
+        { error: 'A JSON body {"secret": "<SETUP_SECRET>"} is required.' },
+        400,
+      );
     }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return c.json(
+        { error: 'A JSON body {"secret": "<SETUP_SECRET>"} is required.' },
+        400,
+      );
+    }
+    const secret = (body as { secret?: unknown }).secret;
+    if (typeof secret !== 'string' || secret.length === 0) {
+      return c.json(
+        { error: 'A JSON body {"secret": "<SETUP_SECRET>"} is required.' },
+        400,
+      );
+    }
+    provided = secret;
   }
 
-  return c.json({ migrations: log });
+  // Constant-time comparison so neither the content nor the length of the
+  // secret leaks through timing.
+  if (!constantTimeEqual(provided, expected)) {
+    return c.json({ error: 'Invalid setup secret.' }, 403);
+  }
+
+  return c.json(await runMigrations(c.env));
 });
 
 export default app;

@@ -85,10 +85,14 @@ class D1Statement {
 export class D1Mock {
   private readonly db: DatabaseSync;
 
-  constructor() {
+  // applyMigrations=false yields an empty database so a test can exercise the
+  // setup/migration runner end-to-end from a blank slate.
+  constructor(applyMigrations = true) {
     this.db = new DatabaseSync(':memory:');
-    for (const migration of getMigrations('')) {
-      this.db.exec(migration.sql);
+    if (applyMigrations) {
+      for (const migration of getMigrations('')) {
+        this.db.exec(migration.sql);
+      }
     }
   }
 

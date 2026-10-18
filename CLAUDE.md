@@ -92,7 +92,7 @@ shortlink/
 │   │   │   │   ├── analytics.ts  # Per-link and summary click analytics (D1 batch queries)
 │   │   │   │   ├── admin.ts      # Admin: user mgmt, link mgmt, settings
 │   │   │   │   ├── redirect.ts   # /:slug redirect + async click logging
-│   │   │   │   └── setup.ts      # POST /setup — HTTP-triggered DB migration (schema_v1 + schema_v2)
+│   │   │   │   └── setup.ts      # GET /api/setup/state + POST /api/setup — HTTP-triggered DB migration (schema_v1 + schema_v2)
 │   │   │   ├── middleware/
 │   │   │   │   └── auth.ts       # requireAuth and requireAdmin middleware (JWT verification)
 │   │   │   └── lib/
@@ -105,6 +105,7 @@ shortlink/
 │   │   │       ├── email.ts      # Provider dispatch: Resend API or SMTP; otpEmailHtml + resetPasswordEmailHtml templates
 │   │   │       ├── smtp.ts       # SMTP client over cloudflare:sockets (STARTTLS + implicit TLS)
 │   │   │       ├── kv.ts         # All KV operations (link cache, challenge store, rate limiting)
+│   │   │       ├── migrations-runner.ts # runMigrations() shared by POST /api/setup and POST /api/admin/setup
 │   │   │       └── ua.ts         # User-agent parsing (device/browser/OS detection)
 │   │   ├── migrations/
 │   │   │   └── 0001_init.sql     # Canonical schema: all tables + default settings rows (used by wrangler d1 migrations apply)
@@ -166,7 +167,7 @@ Stored AES-256-GCM encrypted in D1. The encryption key (`TOTP_ENCRYPTION_KEY`) i
 | `login_attempts_ip:{ip}` | Login brute-force rate limit (IP dimension) | 900s |
 | `register_rate:{ip}` | Registration rate limit (IP) | 3600s |
 | `forgot_pw_rate:{ip}` | Forgot-password rate limit (IP) | 3600s |
-| `setup_rate:{ip}` | Setup/migration endpoint rate limit (IP) | 900s |
+| `setup_rate:{ip}` | Setup/migration endpoint rate limit (IP) | 600s |
 | `2fa_attempts:{jti}` | General 2FA attempt counter | 600s |
 | `passkey_opts:{jti}` | Passkey options attempt counter | 600s |
 | `totp_confirm:{userId}` | TOTP setup confirm attempt counter | 120s |
@@ -243,9 +244,11 @@ Two files in `apps/worker/migrations/`:
 - `0002_token_version.sql` — adds `users.token_version` for session revocation
 
 **HTTP setup route (production):**
-`POST /setup` with `X-Setup-Secret` header runs migrations embedded in `routes/setup.ts`. Two migrations:
+`POST /api/setup` (legacy alias `/setup`) with a JSON body `{"secret": "<SETUP_SECRET>"}` runs migrations via the shared `lib/migrations-runner.ts` (`runMigrations`). Two migrations:
 - `schema_v1` — identical DDL as `0001_init.sql`, but parameterized by `TABLE_PREFIX` and tracked in `_schema_migrations` table
 - `schema_v2` — adds `token_version` to `users` (mirrors `0002_token_version.sql`)
+
+The legacy `X-Setup-Secret` header is still accepted when the body is empty. The endpoint is rate-limited to 3 attempts per IP per 10 minutes (counted before the secret check; a `429` carries a `Retry-After` header). `GET /api/setup/state` (public) reports `{ enabled }` from the `setup_page_enabled` setting (default enabled); `GET /api/setup/*` returns `405` pointing at the POST form. An admin can run the same migrations keylessly via `POST /api/admin/setup` (no IP rate limit; writes an audit log entry). `setup_page_enabled` only hides the setup page — it never disables the `POST` migration channel.
 
 Re-visiting the setup URL is safe — already-applied migrations return `"skipped"`.
 
@@ -260,7 +263,7 @@ Re-visiting the setup URL is safe — already-applied migrations return `"skippe
 - Password reset codes: max 3 wrong attempts per code; rate-limited 3 sends per 10 min per email
 - Login brute-force limited to 10 attempts per 15-minute window per email, plus 20 per IP (`login_attempts:{email}` + `login_attempts_ip:{ip}` KV)
 - Registration and forgot-password additionally rate-limited per IP (`register_rate:{ip}`, `forgot_pw_rate:{ip}`)
-- Setup/migration endpoint rate-limited per IP (`setup_rate:{ip}`); secret passed via header and compared in constant time
+- Setup/migration endpoint rate-limited per IP (`setup_rate:{ip}`, 3 per 10 min, counted before the secret check); secret sent in the JSON body (legacy header fallback) and compared in constant time
 - `cf-connecting-ip` used for IP logging (cannot be forged); `x-forwarded-for` ignored
 - User-Agent and Referer headers truncated before storage (512 and 2048 bytes respectively)
 - `app_name` setting validated: 1–64 chars, no HTML-special or CR/LF characters
