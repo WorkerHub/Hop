@@ -72,7 +72,7 @@ export default function TwoFactorPage() {
       const result = await authApi.totpVerify(pendingToken, code);
       await handleSuccess(result);
     } catch (err) {
-      toastApiError(err, t('toast.invalidCode'));
+      toastApiError(err, t('toast.invalidCode'), t);
     } finally {
       setLoading(false);
     }
@@ -85,7 +85,7 @@ export default function TwoFactorPage() {
       setOtpSent(true);
       toast.success(t('toast.codeSent'));
     } catch (err) {
-      toastApiError(err, t('toast.sendCodeFailed'));
+      toastApiError(err, t('toast.sendCodeFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -98,7 +98,7 @@ export default function TwoFactorPage() {
       const result = await authApi.emailOtpVerify(pendingToken, code);
       await handleSuccess(result);
     } catch (err) {
-      toastApiError(err, t('toast.invalidCode'));
+      toastApiError(err, t('toast.invalidCode'), t);
     } finally {
       setLoading(false);
     }
@@ -117,7 +117,7 @@ export default function TwoFactorPage() {
       );
       await handleSuccess(result);
     } catch (err) {
-      toastApiError(err, t('toast.passkeyAuthFailed'));
+      toastApiError(err, t('toast.passkeyAuthFailed'), t);
     } finally {
       setLoading(false);
     }

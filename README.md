@@ -145,6 +145,10 @@ Navigate to your deployed URL and register — the first account is automaticall
 ```bash
 # 1. Create apps/worker/.dev.vars
 cat > apps/worker/.dev.vars << 'EOF'
+APP_URL=http://localhost:8787
+APP_NAME=ShortLink
+RP_ID=localhost
+APP_ORIGIN=http://localhost:8787
 JWT_SECRET=dev-secret-at-least-32-characters-long
 TOTP_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 SETUP_SECRET=local-setup-secret

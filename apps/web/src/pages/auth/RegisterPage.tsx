@@ -63,7 +63,7 @@ export default function RegisterPage() {
         navigate('/login');
       }
     } catch (err) {
-      toastApiError(err, t('toast.registrationFailed'));
+      toastApiError(err, t('toast.registrationFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -91,7 +91,7 @@ export default function RegisterPage() {
       await refreshUser();
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      toastApiError(err, t('toast.verificationFailed'));
+      toastApiError(err, t('toast.verificationFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export default function RegisterPage() {
       startCountdown(RESEND_COUNTDOWN_SECONDS);
       toast.success(t('auth.verifyCodeResent'));
     } catch (err) {
-      toastApiError(err, t('toast.sendCodeFailed'));
+      toastApiError(err, t('toast.sendCodeFailed'), t);
     } finally {
       setLoading(false);
     }

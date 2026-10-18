@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
       await authApi.verifyResetCode(email, code);
       setStep('password');
     } catch (err) {
-      toastApiError(err, t('toast.invalidCode'));
+      toastApiError(err, t('toast.invalidCode'), t);
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
       toast.success(t('auth.resetSuccess'));
       navigate('/login');
     } catch (err) {
-      toastApiError(err, t('toast.resetPasswordFailed'));
+      toastApiError(err, t('toast.resetPasswordFailed'), t);
     } finally {
       setLoading(false);
     }

@@ -261,6 +261,37 @@ export const en = {
     appNameUpdated: 'App name updated',
     emailSettingsSaved: 'Email settings saved',
   },
+  errors: {
+    emailOrUsernameTaken: 'This email or username is already taken.',
+    invalidCredentials: 'Incorrect email or password.',
+    invalidEmail: 'Please enter a valid email address.',
+    invalidUsername:
+      'Username must be 3–32 characters using letters, numbers, dashes, or underscores.',
+    passwordTooShort: 'Password must be at least 8 characters.',
+    passwordTooLong: 'Password is too long.',
+    registrationDisabled: 'Registration is currently disabled.',
+    tooManyRequests: 'Too many requests. Please try again later.',
+    tooManyLoginAttempts: 'Too many login attempts. Please try again later.',
+    tooManyAttempts: 'Too many attempts. Please try again later.',
+    invalidCode: 'Invalid or incorrect code.',
+    currentPasswordIncorrect: 'Current password is incorrect.',
+    totpAlreadyEnabled: 'TOTP is already enabled.',
+    accountDisabled: 'This account is disabled.',
+    codeAlreadyUsed: 'This code was already used. Please use a new one.',
+    emailSendFailed: 'Failed to send the email. Please try again.',
+    invalidUrl: 'Please enter a valid URL.',
+    onlyHttpHttpsAllowed: 'Only http and https URLs are allowed.',
+    invalidSlug:
+      'Invalid slug. Use 1–50 letters, numbers, dashes, or underscores.',
+    slugReserved: 'This slug is reserved.',
+    slugTaken: 'This slug is already taken.',
+    destinationUrlRequired: 'Please enter a destination URL.',
+    linkNotFound: 'Link not found.',
+    expiresAtInPast: 'Expiry must be in the future.',
+    failedToCreateLink: 'Failed to create the link.',
+    notFound: 'Not found.',
+    internalServerError: 'Internal server error.',
+  },
 } as const;
 
 type DeepString<T> = {

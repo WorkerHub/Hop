@@ -1,0 +1,32 @@
+// Maps backend error codes to i18n dot-path keys (defined in
+// i18n/locales/*.ts). Kept as plain data (no React, no path aliases) so the
+// mapping can be unit-tested and cross-checked against both locales.
+export const API_ERROR_CODES: Record<string, string> = {
+  EMAIL_OR_USERNAME_TAKEN: 'errors.emailOrUsernameTaken',
+  INVALID_CREDENTIALS: 'errors.invalidCredentials',
+  INVALID_EMAIL: 'errors.invalidEmail',
+  INVALID_USERNAME: 'errors.invalidUsername',
+  PASSWORD_TOO_SHORT: 'errors.passwordTooShort',
+  PASSWORD_TOO_LONG: 'errors.passwordTooLong',
+  REGISTRATION_DISABLED: 'errors.registrationDisabled',
+  TOO_MANY_REQUESTS: 'errors.tooManyRequests',
+  TOO_MANY_LOGIN_ATTEMPTS: 'errors.tooManyLoginAttempts',
+  TOO_MANY_ATTEMPTS: 'errors.tooManyAttempts',
+  INVALID_CODE: 'errors.invalidCode',
+  CURRENT_PASSWORD_INCORRECT: 'errors.currentPasswordIncorrect',
+  TOTP_ALREADY_ENABLED: 'errors.totpAlreadyEnabled',
+  ACCOUNT_DISABLED: 'errors.accountDisabled',
+  CODE_ALREADY_USED: 'errors.codeAlreadyUsed',
+  EMAIL_SEND_FAILED: 'errors.emailSendFailed',
+  INVALID_URL: 'errors.invalidUrl',
+  ONLY_HTTP_HTTPS_ALLOWED: 'errors.onlyHttpHttpsAllowed',
+  INVALID_SLUG: 'errors.invalidSlug',
+  SLUG_RESERVED: 'errors.slugReserved',
+  SLUG_TAKEN: 'errors.slugTaken',
+  DESTINATION_URL_REQUIRED: 'errors.destinationUrlRequired',
+  LINK_NOT_FOUND: 'errors.linkNotFound',
+  EXPIRES_AT_IN_PAST: 'errors.expiresAtInPast',
+  FAILED_TO_CREATE_LINK: 'errors.failedToCreateLink',
+  NOT_FOUND: 'errors.notFound',
+  INTERNAL_SERVER_ERROR: 'errors.internalServerError',
+};

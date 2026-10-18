@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { tbl } from '../lib/db.js';
+import { apiError } from '../lib/errors.js';
 import { deleteCachedLink } from '../lib/kv.js';
 import { parsePagination } from '../lib/params.js';
 import { generateSlug, isReservedSlug, isValidSlug } from '../lib/slug.js';
@@ -92,29 +93,46 @@ links.post('/', async (c) => {
       expiresAt?: number | null;
     }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   if (!body.destinationUrl) {
-    return c.json({ error: 'destinationUrl is required' }, 400);
+    return apiError(
+      c,
+      400,
+      'DESTINATION_URL_REQUIRED',
+      'destinationUrl is required',
+    );
   }
 
   if (body.destinationUrl.length > 2048) {
-    return c.json(
-      { error: 'destinationUrl must be 2048 characters or fewer' },
+    return apiError(
+      c,
       400,
+      'DESTINATION_URL_TOO_LONG',
+      'destinationUrl must be 2048 characters or fewer',
     );
   }
   if (body.title && body.title.length > 255) {
-    return c.json({ error: 'title must be 255 characters or fewer' }, 400);
+    return apiError(
+      c,
+      400,
+      'TITLE_TOO_LONG',
+      'title must be 255 characters or fewer',
+    );
   }
 
   try {
     const parsed = new URL(body.destinationUrl);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return c.json({ error: 'Only http and https URLs are allowed' }, 400);
+      return apiError(
+        c,
+        400,
+        'ONLY_HTTP_HTTPS_ALLOWED',
+        'Only http and https URLs are allowed',
+      );
     }
   } catch {
-    return c.json({ error: 'Invalid URL' }, 400);
+    return apiError(c, 400, 'INVALID_URL', 'Invalid URL');
   }
 
   const L = tbl(c.env, 'links');
@@ -122,16 +140,15 @@ links.post('/', async (c) => {
   if (body.customSlug) {
     const customSlug = body.customSlug.trim();
     if (!isValidSlug(customSlug)) {
-      return c.json(
-        {
-          error:
-            'Slug must be 1-50 alphanumeric characters, dashes, or underscores',
-        },
+      return apiError(
+        c,
         400,
+        'INVALID_SLUG',
+        'Slug must be 1-50 alphanumeric characters, dashes, or underscores',
       );
     }
     if (isReservedSlug(customSlug)) {
-      return c.json({ error: 'This slug is reserved' }, 400);
+      return apiError(c, 400, 'SLUG_RESERVED', 'This slug is reserved');
     }
     const existing = await c.env.DB.prepare(
       `SELECT 1 FROM ${L} WHERE slug = ?1`,
@@ -139,7 +156,7 @@ links.post('/', async (c) => {
       .bind(customSlug)
       .first();
     if (existing) {
-      return c.json({ error: 'This slug is already taken' }, 409);
+      return apiError(c, 409, 'SLUG_TAKEN', 'This slug is already taken');
     }
     slug = customSlug;
   } else {
@@ -150,18 +167,30 @@ links.post('/', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   if (body.expiresAt) {
     if (!Number.isSafeInteger(body.expiresAt)) {
-      return c.json(
-        { error: 'expiresAt must be an integer Unix timestamp' },
+      return apiError(
+        c,
         400,
+        'EXPIRES_AT_INVALID',
+        'expiresAt must be an integer Unix timestamp',
       );
     }
     if (body.expiresAt <= now) {
-      return c.json({ error: 'expiresAt must be in the future' }, 400);
+      return apiError(
+        c,
+        400,
+        'EXPIRES_AT_IN_PAST',
+        'expiresAt must be in the future',
+      );
     }
     expiresAt = body.expiresAt;
   } else if (body.expiryDays && body.expiryDays > 0) {
     if (body.expiryDays > 3650) {
-      return c.json({ error: 'expiryDays must be 3650 or fewer' }, 400);
+      return apiError(
+        c,
+        400,
+        'EXPIRY_DAYS_TOO_LARGE',
+        'expiryDays must be 3650 or fewer',
+      );
     }
     expiresAt = now + body.expiryDays * 86400;
   }
@@ -174,7 +203,8 @@ links.post('/', async (c) => {
     .bind(userId, slug, body.destinationUrl, body.title ?? null, expiresAt)
     .first<LinkRow>();
 
-  if (!row) return c.json({ error: 'Failed to create link' }, 500);
+  if (!row)
+    return apiError(c, 500, 'FAILED_TO_CREATE_LINK', 'Failed to create link');
 
   return c.json({ link: row }, 201);
 });
@@ -196,7 +226,7 @@ links.get('/:id', async (c) => {
     .bind(...binds)
     .first<LinkRow>();
 
-  if (!row) return c.json({ error: 'Link not found' }, 404);
+  if (!row) return apiError(c, 404, 'LINK_NOT_FOUND', 'Link not found');
   return c.json({ link: row });
 });
 
@@ -217,7 +247,7 @@ links.put('/:id', async (c) => {
     .bind(...(role === 'admin' ? [id] : [id, userId]))
     .first<LinkRow>();
 
-  if (!existing) return c.json({ error: 'Link not found' }, 404);
+  if (!existing) return apiError(c, 404, 'LINK_NOT_FOUND', 'Link not found');
 
   const body = await c.req
     .json<{
@@ -229,45 +259,57 @@ links.put('/:id', async (c) => {
       customSlug?: string;
     }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   let newSlug = existing.slug;
   if (body.customSlug !== undefined && body.customSlug !== existing.slug) {
     const customSlug = body.customSlug.trim();
     if (!isValidSlug(customSlug)) {
-      return c.json({ error: 'Invalid slug' }, 400);
+      return apiError(c, 400, 'INVALID_SLUG', 'Invalid slug');
     }
     if (isReservedSlug(customSlug)) {
-      return c.json({ error: 'This slug is reserved' }, 400);
+      return apiError(c, 400, 'SLUG_RESERVED', 'This slug is reserved');
     }
     const conflict = await c.env.DB.prepare(
       `SELECT 1 FROM ${L} WHERE slug = ?1 AND id != ?2`,
     )
       .bind(customSlug, id)
       .first();
-    if (conflict) return c.json({ error: 'Slug already taken' }, 409);
+    if (conflict) return apiError(c, 409, 'SLUG_TAKEN', 'Slug already taken');
     newSlug = customSlug;
   }
 
   if (body.destinationUrl) {
     if (body.destinationUrl.length > 2048) {
-      return c.json(
-        { error: 'destinationUrl must be 2048 characters or fewer' },
+      return apiError(
+        c,
         400,
+        'DESTINATION_URL_TOO_LONG',
+        'destinationUrl must be 2048 characters or fewer',
       );
     }
     try {
       const parsed = new URL(body.destinationUrl);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return c.json({ error: 'Only http and https URLs are allowed' }, 400);
+        return apiError(
+          c,
+          400,
+          'ONLY_HTTP_HTTPS_ALLOWED',
+          'Only http and https URLs are allowed',
+        );
       }
     } catch {
-      return c.json({ error: 'Invalid URL' }, 400);
+      return apiError(c, 400, 'INVALID_URL', 'Invalid URL');
     }
   }
 
   if (body.title && body.title.length > 255) {
-    return c.json({ error: 'title must be 255 characters or fewer' }, 400);
+    return apiError(
+      c,
+      400,
+      'TITLE_TOO_LONG',
+      'title must be 255 characters or fewer',
+    );
   }
 
   let expiresAt = existing.expires_at;
@@ -275,19 +317,31 @@ links.put('/:id', async (c) => {
   if (body.expiresAt !== undefined) {
     if (body.expiresAt !== null) {
       if (!Number.isSafeInteger(body.expiresAt)) {
-        return c.json(
-          { error: 'expiresAt must be an integer Unix timestamp' },
+        return apiError(
+          c,
           400,
+          'EXPIRES_AT_INVALID',
+          'expiresAt must be an integer Unix timestamp',
         );
       }
       if (body.expiresAt <= now) {
-        return c.json({ error: 'expiresAt must be in the future' }, 400);
+        return apiError(
+          c,
+          400,
+          'EXPIRES_AT_IN_PAST',
+          'expiresAt must be in the future',
+        );
       }
     }
     expiresAt = body.expiresAt;
   } else if (body.expiryDays !== undefined) {
     if (body.expiryDays && body.expiryDays > 3650) {
-      return c.json({ error: 'expiryDays must be 3650 or fewer' }, 400);
+      return apiError(
+        c,
+        400,
+        'EXPIRY_DAYS_TOO_LARGE',
+        'expiryDays must be 3650 or fewer',
+      );
     }
     expiresAt =
       body.expiryDays && body.expiryDays > 0
@@ -343,7 +397,7 @@ links.delete('/:id', async (c) => {
     .bind(...(role === 'admin' ? [id] : [id, userId]))
     .first<Pick<LinkRow, 'slug'>>();
 
-  if (!existing) return c.json({ error: 'Link not found' }, 404);
+  if (!existing) return apiError(c, 404, 'LINK_NOT_FOUND', 'Link not found');
 
   await c.env.DB.prepare(`DELETE FROM ${L} WHERE id = ?1`).bind(id).run();
   await deleteCachedLink(c.env.LINKS_KV, existing.slug);

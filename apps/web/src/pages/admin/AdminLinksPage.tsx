@@ -43,7 +43,7 @@ export default function AdminLinksPage() {
       toast.success(t('toast.linkDeleted'));
       setDeleteId(null);
     },
-    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed')),
+    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed'), t),
   });
 
   return (

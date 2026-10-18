@@ -58,7 +58,7 @@ export default function LinksPage() {
       queryClient.invalidateQueries({ queryKey: ['links'] });
       setDeleteId(null);
     },
-    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed')),
+    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed'), t),
   });
 
   return (
@@ -256,7 +256,7 @@ function CreateLinkDialog({
       setCustomExpiry('');
       onCreated();
     } catch (err) {
-      toastApiError(err, t('toast.createLinkFailed'));
+      toastApiError(err, t('toast.createLinkFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -397,7 +397,7 @@ export function EditLinkDialog({
       toast.success(t('toast.linkUpdated'));
       onUpdated();
     } catch (err) {
-      toastApiError(err, t('toast.updateLinkFailed'));
+      toastApiError(err, t('toast.updateLinkFailed'), t);
     } finally {
       setLoading(false);
     }

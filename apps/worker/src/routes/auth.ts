@@ -13,6 +13,7 @@ import {
   sendEmail,
   verifyEmailHtml,
 } from '../lib/email.js';
+import { apiError } from '../lib/errors.js';
 import {
   signAccessToken,
   signPendingToken,
@@ -172,10 +173,15 @@ auth.post('/register', async (c) => {
   const body = await c.req
     .json<{ email: string; username: string; password: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   if (!body.email || !body.username || !body.password) {
-    return c.json({ error: 'email, username, and password are required' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_USERNAME_PASSWORD_REQUIRED',
+      'email, username, and password are required',
+    );
   }
 
   const email = body.email.trim().toLowerCase();
@@ -188,27 +194,36 @@ auth.post('/register', async (c) => {
     clientIp(c),
   );
   if (!registerAllowed) {
-    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_REQUESTS',
+      'Too many requests. Try again later.',
+    );
   }
 
   // M4: Input validation
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return c.json({ error: 'Invalid email address' }, 400);
+    return apiError(c, 400, 'INVALID_EMAIL', 'Invalid email address');
   }
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username)) {
-    return c.json(
-      {
-        error:
-          'Username must be 3–32 characters: letters, numbers, dashes, or underscores',
-      },
+    return apiError(
+      c,
       400,
+      'INVALID_USERNAME',
+      'Username must be 3–32 characters: letters, numbers, dashes, or underscores',
     );
   }
   if (password.length < 8) {
-    return c.json({ error: 'Password must be at least 8 characters' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSWORD_TOO_SHORT',
+      'Password must be at least 8 characters',
+    );
   }
   if (password.length > 256) {
-    return c.json({ error: 'Password too long' }, 400);
+    return apiError(c, 400, 'PASSWORD_TOO_LONG', 'Password too long');
   }
 
   // H3: Check registration status before INSERT
@@ -220,7 +235,12 @@ auth.post('/register', async (c) => {
   if (!isFirstUser) {
     const enabled = await isRegistrationEnabled(c.env);
     if (!enabled) {
-      return c.json({ error: 'Registration is currently disabled' }, 403);
+      return apiError(
+        c,
+        403,
+        'REGISTRATION_DISABLED',
+        'Registration is currently disabled',
+      );
     }
   }
 
@@ -231,7 +251,12 @@ auth.post('/register', async (c) => {
     .bind(email, username)
     .first();
   if (existing) {
-    return c.json({ error: 'Email or username already taken' }, 409);
+    return apiError(
+      c,
+      409,
+      'EMAIL_OR_USERNAME_TAKEN',
+      'Email or username already taken',
+    );
   }
 
   const passwordHash = await hashPassword(password);
@@ -261,9 +286,15 @@ auth.post('/register', async (c) => {
     );
 
     if (newUser === 'taken') {
-      return c.json({ error: 'Email or username already taken' }, 409);
+      return apiError(
+        c,
+        409,
+        'EMAIL_OR_USERNAME_TAKEN',
+        'Email or username already taken',
+      );
     }
-    if (!newUser) return c.json({ error: 'Failed to create user' }, 500);
+    if (!newUser)
+      return apiError(c, 500, 'FAILED_TO_CREATE_USER', 'Failed to create user');
 
     const code = generateOtp(6);
     const codeHash = await sha256(code);
@@ -282,9 +313,11 @@ auth.post('/register', async (c) => {
       await c.env.DB.prepare(`DELETE FROM ${tbl(c.env, 'users')} WHERE id = ?1`)
         .bind(newUser.id)
         .run();
-      return c.json(
-        { error: 'Failed to send verification email. Please try again.' },
+      return apiError(
+        c,
         500,
+        'EMAIL_SEND_FAILED',
+        'Failed to send verification email. Please try again.',
       );
     }
 
@@ -313,9 +346,15 @@ auth.post('/register', async (c) => {
   );
 
   if (result === 'taken') {
-    return c.json({ error: 'Email or username already taken' }, 409);
+    return apiError(
+      c,
+      409,
+      'EMAIL_OR_USERNAME_TAKEN',
+      'Email or username already taken',
+    );
   }
-  if (!result) return c.json({ error: 'Failed to create user' }, 500);
+  if (!result)
+    return apiError(c, 500, 'FAILED_TO_CREATE_USER', 'Failed to create user');
 
   return c.json(
     {
@@ -337,7 +376,7 @@ auth.post('/verify-email', async (c) => {
   const body = await c.req
     .json<{ userId: string; code: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.userId || !body.code || body.code.length > 6) {
     return c.json({ error: 'userId and code required' }, 400);
   }
@@ -364,9 +403,11 @@ auth.post('/verify-email', async (c) => {
   }
 
   if (verification.attempts >= 3) {
-    return c.json(
-      { error: 'Too many failed attempts. Please request a new code.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please request a new code.',
     );
   }
 
@@ -377,7 +418,7 @@ auth.post('/verify-email', async (c) => {
     )
       .bind(verification.id)
       .run();
-    return c.json({ error: 'Invalid code' }, 401);
+    return apiError(c, 401, 'INVALID_CODE', 'Invalid code');
   }
 
   await c.env.DB.batch([
@@ -407,7 +448,7 @@ auth.post('/verify-email', async (c) => {
 // ─────────────────────────────────────────────────────────────────────────────
 auth.post('/resend-verify-email', async (c) => {
   const body = await c.req.json<{ userId: string }>().catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.userId) return c.json({ error: 'userId required' }, 400);
 
   const user = await c.env.DB.prepare(
@@ -421,7 +462,12 @@ auth.post('/resend-verify-email', async (c) => {
 
   const allowed = await checkOtpRateLimit(c.env.LINKS_KV, user.email);
   if (!allowed) {
-    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_REQUESTS',
+      'Too many requests. Try again later.',
+    );
   }
 
   const code = generateOtp(6);
@@ -436,9 +482,11 @@ auth.post('/resend-verify-email', async (c) => {
       html: verifyEmailHtml(appName, code),
     });
   } catch {
-    return c.json(
-      { error: 'Failed to send verification email. Please try again.' },
+    return apiError(
+      c,
       500,
+      'EMAIL_SEND_FAILED',
+      'Failed to send verification email. Please try again.',
     );
   }
 
@@ -464,10 +512,15 @@ auth.post('/login', async (c) => {
   const body = await c.req
     .json<{ email: string; password: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   if (!body.email || !body.password) {
-    return c.json({ error: 'email and password are required' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_PASSWORD_REQUIRED',
+      'email and password are required',
+    );
   }
 
   const email = body.email.trim().toLowerCase();
@@ -479,9 +532,11 @@ auth.post('/login', async (c) => {
     clientIp(c),
   );
   if (!loginAllowed) {
-    return c.json(
-      { error: 'Too many login attempts. Please try again later.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_LOGIN_ATTEMPTS',
+      'Too many login attempts. Please try again later.',
     );
   }
 
@@ -494,12 +549,12 @@ auth.post('/login', async (c) => {
   if (!user?.is_active) {
     // S4: Run dummy PBKDF2 to normalise response time and prevent user enumeration
     await verifyPassword(body.password, TIMING_DUMMY_HASH);
-    return c.json({ error: 'Invalid credentials' }, 401);
+    return apiError(c, 401, 'INVALID_CREDENTIALS', 'Invalid credentials');
   }
 
   const valid = await verifyPassword(body.password, user.password_hash);
   if (!valid) {
-    return c.json({ error: 'Invalid credentials' }, 401);
+    return apiError(c, 401, 'INVALID_CREDENTIALS', 'Invalid credentials');
   }
 
   // C1: Reset failed counter on successful login
@@ -564,7 +619,7 @@ auth.post('/logout', requireAuth, async (c) => {
 auth.post('/refresh', async (c) => {
   // H4: Read refresh token from HttpOnly cookie
   const refreshToken = getRefreshCookie(c);
-  if (!refreshToken) return c.json({ error: 'Unauthorized' }, 401);
+  if (!refreshToken) return apiError(c, 401, 'UNAUTHORIZED', 'Unauthorized');
 
   // FE-R1: Only a bad token is a 401 (and clears the cookie). The client treats
   // 401 as "session over", so KV/D1 failures must not be reported that way.
@@ -580,7 +635,7 @@ auth.post('/refresh', async (c) => {
     // C-2: Check denylist BEFORE rotating — prevents use of already-revoked tokens
     if (await isJtiDenylisted(c.env.LINKS_KV, payload.jti)) {
       clearRefreshCookie(c);
-      return c.json({ error: 'Unauthorized' }, 401);
+      return apiError(c, 401, 'UNAUTHORIZED', 'Unauthorized');
     }
 
     const user = await c.env.DB.prepare(
@@ -588,13 +643,14 @@ auth.post('/refresh', async (c) => {
     )
       .bind(payload.sub)
       .first<UserRow>();
-    if (!user?.is_active) return c.json({ error: 'User not found' }, 401);
+    if (!user?.is_active)
+      return apiError(c, 401, 'USER_NOT_FOUND', 'User not found');
 
     // BE-S3: If the account's token_version has changed (password change/reset,
     // admin disable/demote), this refresh token is no longer valid.
     if (user.token_version !== payload.tv) {
       clearRefreshCookie(c);
-      return c.json({ error: 'Unauthorized' }, 401);
+      return apiError(c, 401, 'UNAUTHORIZED', 'Unauthorized');
     }
 
     // Rotate only after every read succeeded, so a D1 failure can't burn a
@@ -636,7 +692,7 @@ auth.get('/me', requireAuth, async (c) => {
       >
     >();
 
-  if (!user) return c.json({ error: 'Not found' }, 404);
+  if (!user) return apiError(c, 404, 'NOT_FOUND', 'Not found');
   return c.json({ user });
 });
 
@@ -650,15 +706,25 @@ auth.post('/change-password', requireAuth, async (c) => {
   const body = await c.req
     .json<{ currentPassword: string; newPassword: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.currentPassword || !body.newPassword) {
-    return c.json({ error: 'currentPassword and newPassword required' }, 400);
+    return apiError(
+      c,
+      400,
+      'CURRENT_PASSWORD_NEW_PASSWORD_REQUIRED',
+      'currentPassword and newPassword required',
+    );
   }
   if (body.newPassword.length < 8) {
-    return c.json({ error: 'New password must be at least 8 characters' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSWORD_TOO_SHORT',
+      'New password must be at least 8 characters',
+    );
   }
   if (body.newPassword.length > 256) {
-    return c.json({ error: 'Password too long' }, 400);
+    return apiError(c, 400, 'PASSWORD_TOO_LONG', 'Password too long');
   }
 
   const user = await c.env.DB.prepare(
@@ -666,10 +732,16 @@ auth.post('/change-password', requireAuth, async (c) => {
   )
     .bind(userId)
     .first<UserRow>();
-  if (!user) return c.json({ error: 'Not found' }, 404);
+  if (!user) return apiError(c, 404, 'NOT_FOUND', 'Not found');
 
   const valid = await verifyPassword(body.currentPassword, user.password_hash);
-  if (!valid) return c.json({ error: 'Current password is incorrect' }, 401);
+  if (!valid)
+    return apiError(
+      c,
+      401,
+      'CURRENT_PASSWORD_INCORRECT',
+      'Current password is incorrect',
+    );
 
   const newHash = await hashPassword(body.newPassword);
   await c.env.DB.prepare(
@@ -717,7 +789,7 @@ auth.post('/2fa/totp/setup', requireAuth, async (c) => {
     .first<Pick<UserRow, 'totp_enabled'>>();
 
   if (user?.totp_enabled) {
-    return c.json({ error: 'TOTP is already enabled' }, 409);
+    return apiError(c, 409, 'TOTP_ALREADY_ENABLED', 'TOTP is already enabled');
   }
 
   const secret = generateTotpSecret();
@@ -738,10 +810,10 @@ auth.post('/2fa/totp/setup', requireAuth, async (c) => {
 auth.post('/2fa/totp/confirm', requireAuth, async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json<{ code: string }>().catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   // R6-L1: TOTP confirm only ever validates a 6-digit code — reject anything longer
   if (!body.code || body.code.length > 6)
-    return c.json({ error: 'code required' }, 400);
+    return apiError(c, 400, 'CODE_REQUIRED', 'code required');
 
   // R4-L4: Prevent brute-force of the 6-digit code during setup (max 10 per 2 min)
   const confirmAttempts = await incrementTotpConfirmAttempts(
@@ -749,9 +821,11 @@ auth.post('/2fa/totp/confirm', requireAuth, async (c) => {
     userId,
   );
   if (confirmAttempts > 10) {
-    return c.json(
-      { error: 'Too many attempts. Please set up TOTP again.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many attempts. Please set up TOTP again.',
     );
   }
 
@@ -762,16 +836,21 @@ auth.post('/2fa/totp/confirm', requireAuth, async (c) => {
     .first<Pick<UserRow, 'totp_secret' | 'totp_enabled'>>();
 
   if (!user?.totp_secret)
-    return c.json({ error: 'No TOTP setup in progress' }, 400);
+    return apiError(
+      c,
+      400,
+      'NO_TOTP_SETUP_IN_PROGRESS',
+      'No TOTP setup in progress',
+    );
   if (user.totp_enabled)
-    return c.json({ error: 'TOTP already confirmed' }, 409);
+    return apiError(c, 409, 'TOTP_ALREADY_CONFIRMED', 'TOTP already confirmed');
 
   const secret = await decryptTotpSecret(
     user.totp_secret,
     c.env.TOTP_ENCRYPTION_KEY,
   );
   if (!verifyTotp(secret, body.code)) {
-    return c.json({ error: 'Invalid code' }, 400);
+    return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
   }
 
   await resetTotpConfirmAttempts(c.env.LINKS_KV, userId);
@@ -798,16 +877,26 @@ auth.delete('/2fa/totp', requireAuth, async (c) => {
     .json<{ currentPassword?: string }>()
     .catch(() => ({}) as { currentPassword?: string });
   if (!body.currentPassword)
-    return c.json({ error: 'currentPassword required' }, 400);
+    return apiError(
+      c,
+      400,
+      'CURRENT_PASSWORD_REQUIRED',
+      'currentPassword required',
+    );
 
   const user = await c.env.DB.prepare(
     `SELECT password_hash FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
   )
     .bind(userId)
     .first<Pick<UserRow, 'password_hash'>>();
-  if (!user) return c.json({ error: 'Not found' }, 404);
+  if (!user) return apiError(c, 404, 'NOT_FOUND', 'Not found');
   if (!(await verifyPassword(body.currentPassword, user.password_hash))) {
-    return c.json({ error: 'Current password is incorrect' }, 401);
+    return apiError(
+      c,
+      401,
+      'CURRENT_PASSWORD_INCORRECT',
+      'Current password is incorrect',
+    );
   }
 
   await c.env.DB.prepare(
@@ -823,32 +912,54 @@ auth.post('/2fa/totp/verify', async (c) => {
   const body = await c.req
     .json<{ pendingToken: string; code: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.pendingToken || !body.code || body.code.length > 16) {
-    return c.json({ error: 'pendingToken and code required' }, 400);
+    return apiError(
+      c,
+      400,
+      'PENDING_TOKEN_AND_CODE_REQUIRED',
+      'pendingToken and code required',
+    );
   }
 
   let pending: Awaited<ReturnType<typeof verifyPendingToken>>;
   try {
     pending = await verifyPendingToken(body.pendingToken, c.env.JWT_SECRET);
   } catch {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const storedUserId = await getPending2fa(c.env.LINKS_KV, pending.jti);
   if (!storedUserId) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
   if (storedUserId !== pending.sub) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const attempts = await increment2faAttempts(c.env.LINKS_KV, pending.jti);
   if (attempts > 5) {
     await deletePending2fa(c.env.LINKS_KV, pending.jti);
-    return c.json(
-      { error: 'Too many failed attempts. Please log in again.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please log in again.',
     );
   }
 
@@ -859,9 +970,10 @@ auth.post('/2fa/totp/verify', async (c) => {
     .first<UserRow>();
 
   if (!user?.totp_secret || !user.totp_enabled) {
-    return c.json({ error: 'TOTP not configured' }, 400);
+    return apiError(c, 400, 'TOTP_NOT_CONFIGURED', 'TOTP not configured');
   }
-  if (!user.is_active) return c.json({ error: 'Account is disabled' }, 403);
+  if (!user.is_active)
+    return apiError(c, 403, 'ACCOUNT_DISABLED', 'Account is disabled');
 
   const secret = await decryptTotpSecret(
     user.totp_secret,
@@ -878,9 +990,11 @@ auth.post('/2fa/totp/verify', async (c) => {
       .bind(user.id, body.code)
       .run();
     if (result.meta.changes === 0) {
-      return c.json(
-        { error: 'Code already used. Please wait for the next code.' },
+      return apiError(
+        c,
         401,
+        'CODE_ALREADY_USED',
+        'Code already used. Please wait for the next code.',
       );
     }
   }
@@ -891,7 +1005,7 @@ auth.post('/2fa/totp/verify', async (c) => {
     try {
       codes = JSON.parse(user.totp_backup_codes);
     } catch {
-      return c.json({ error: 'Invalid code' }, 401);
+      return apiError(c, 401, 'INVALID_CODE', 'Invalid code');
     }
     const oldCodesJson = user.totp_backup_codes;
     const hashedBuf = new TextEncoder().encode(hashed);
@@ -919,7 +1033,7 @@ auth.post('/2fa/totp/verify', async (c) => {
   }
 
   if (!isTotpCode && !isBackup) {
-    return c.json({ error: 'Invalid code' }, 401);
+    return apiError(c, 401, 'INVALID_CODE', 'Invalid code');
   }
 
   await deletePending2fa(c.env.LINKS_KV, pending.jti);
@@ -947,7 +1061,7 @@ auth.post('/2fa/email-otp/enable', requireAuth, async (c) => {
 
   const body = await c.req.json<{ code: string }>().catch(() => null);
   if (!body?.code || body.code.length > 6)
-    return c.json({ error: 'code required' }, 400);
+    return apiError(c, 400, 'CODE_REQUIRED', 'code required');
 
   const now = Math.floor(Date.now() / 1000);
   const verification = await c.env.DB.prepare(
@@ -957,15 +1071,19 @@ auth.post('/2fa/email-otp/enable', requireAuth, async (c) => {
     .first<{ id: string; code_hash: string; attempts: number }>();
 
   if (!verification)
-    return c.json(
-      { error: 'No valid verification code. Please request a new one.' },
+    return apiError(
+      c,
       400,
+      'NO_VALID_VERIFICATION_CODE',
+      'No valid verification code. Please request a new one.',
     );
 
   if (verification.attempts >= 3) {
-    return c.json(
-      { error: 'Too many failed attempts. Please request a new code.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please request a new code.',
     );
   }
 
@@ -976,7 +1094,7 @@ auth.post('/2fa/email-otp/enable', requireAuth, async (c) => {
     )
       .bind(verification.id)
       .run();
-    return c.json({ error: 'Invalid code' }, 400);
+    return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
   }
 
   await c.env.DB.batch([
@@ -996,7 +1114,12 @@ auth.post('/2fa/email-otp/send-verify', requireAuth, async (c) => {
 
   const allowed = await checkOtpRateLimit(c.env.LINKS_KV, userEmail);
   if (!allowed) {
-    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_REQUESTS',
+      'Too many requests. Try again later.',
+    );
   }
 
   const code = generateOtp(6);
@@ -1011,9 +1134,11 @@ auth.post('/2fa/email-otp/send-verify', requireAuth, async (c) => {
       html: otpEmailHtml(appName, code),
     });
   } catch {
-    return c.json(
-      { error: 'Failed to send verification email. Please try again.' },
+    return apiError(
+      c,
       500,
+      'EMAIL_SEND_FAILED',
+      'Failed to send verification email. Please try again.',
     );
   }
 
@@ -1040,16 +1165,26 @@ auth.delete('/2fa/email-otp', requireAuth, async (c) => {
     .json<{ currentPassword?: string }>()
     .catch(() => ({}) as { currentPassword?: string });
   if (!body.currentPassword)
-    return c.json({ error: 'currentPassword required' }, 400);
+    return apiError(
+      c,
+      400,
+      'CURRENT_PASSWORD_REQUIRED',
+      'currentPassword required',
+    );
 
   const user = await c.env.DB.prepare(
     `SELECT password_hash FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
   )
     .bind(userId)
     .first<Pick<UserRow, 'password_hash'>>();
-  if (!user) return c.json({ error: 'Not found' }, 404);
+  if (!user) return apiError(c, 404, 'NOT_FOUND', 'Not found');
   if (!(await verifyPassword(body.currentPassword, user.password_hash))) {
-    return c.json({ error: 'Current password is incorrect' }, 401);
+    return apiError(
+      c,
+      401,
+      'CURRENT_PASSWORD_INCORRECT',
+      'Current password is incorrect',
+    );
   }
 
   await c.env.DB.prepare(
@@ -1063,23 +1198,38 @@ auth.delete('/2fa/email-otp', requireAuth, async (c) => {
 // POST /api/auth/2fa/email-otp/send
 auth.post('/2fa/email-otp/send', async (c) => {
   const body = await c.req.json<{ pendingToken: string }>().catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.pendingToken)
-    return c.json({ error: 'pendingToken required' }, 400);
+    return apiError(c, 400, 'PENDING_TOKEN_REQUIRED', 'pendingToken required');
 
   let pending: Awaited<ReturnType<typeof verifyPendingToken>>;
   try {
     pending = await verifyPendingToken(body.pendingToken, c.env.JWT_SECRET);
   } catch {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const storedUserId = await getPending2fa(c.env.LINKS_KV, pending.jti);
   if (!storedUserId) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
   if (storedUserId !== pending.sub) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const user = await c.env.DB.prepare(
@@ -1087,14 +1237,25 @@ auth.post('/2fa/email-otp/send', async (c) => {
   )
     .bind(pending.sub)
     .first<UserRow>();
-  if (!user) return c.json({ error: 'User not found' }, 404);
-  if (!user.is_active) return c.json({ error: 'Account is disabled' }, 403);
+  if (!user) return apiError(c, 404, 'USER_NOT_FOUND', 'User not found');
+  if (!user.is_active)
+    return apiError(c, 403, 'ACCOUNT_DISABLED', 'Account is disabled');
   if (!user.email_2fa_enabled)
-    return c.json({ error: 'Email OTP is not enabled for this account' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_OTP_NOT_ENABLED',
+      'Email OTP is not enabled for this account',
+    );
 
   const allowed = await checkOtpRateLimit(c.env.LINKS_KV, user.email);
   if (!allowed) {
-    return c.json({ error: 'Too many OTP requests. Try again later.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_OTP_REQUESTS',
+      'Too many OTP requests. Try again later.',
+    );
   }
 
   const code = generateOtp(6);
@@ -1110,9 +1271,11 @@ auth.post('/2fa/email-otp/send', async (c) => {
       html: otpEmailHtml(appName, code),
     });
   } catch {
-    return c.json(
-      { error: 'Failed to send verification email. Please try again.' },
+    return apiError(
+      c,
       500,
+      'EMAIL_SEND_FAILED',
+      'Failed to send verification email. Please try again.',
     );
   }
 
@@ -1136,32 +1299,54 @@ auth.post('/2fa/email-otp/verify', async (c) => {
   const body = await c.req
     .json<{ pendingToken: string; code: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.pendingToken || !body.code || body.code.length > 6) {
-    return c.json({ error: 'pendingToken and code required' }, 400);
+    return apiError(
+      c,
+      400,
+      'PENDING_TOKEN_AND_CODE_REQUIRED',
+      'pendingToken and code required',
+    );
   }
 
   let pending: Awaited<ReturnType<typeof verifyPendingToken>>;
   try {
     pending = await verifyPendingToken(body.pendingToken, c.env.JWT_SECRET);
   } catch {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const storedUserId = await getPending2fa(c.env.LINKS_KV, pending.jti);
   if (!storedUserId) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
   if (storedUserId !== pending.sub) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const attempts = await increment2faAttempts(c.env.LINKS_KV, pending.jti);
   if (attempts > 5) {
     await deletePending2fa(c.env.LINKS_KV, pending.jti);
-    return c.json(
-      { error: 'Too many failed attempts. Please log in again.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please log in again.',
     );
   }
 
@@ -1170,10 +1355,16 @@ auth.post('/2fa/email-otp/verify', async (c) => {
   )
     .bind(pending.sub)
     .first<UserRow>();
-  if (!user) return c.json({ error: 'User not found' }, 404);
-  if (!user.is_active) return c.json({ error: 'Account is disabled' }, 403);
+  if (!user) return apiError(c, 404, 'USER_NOT_FOUND', 'User not found');
+  if (!user.is_active)
+    return apiError(c, 403, 'ACCOUNT_DISABLED', 'Account is disabled');
   if (!user.email_2fa_enabled)
-    return c.json({ error: 'Email OTP is not enabled for this account' }, 400);
+    return apiError(
+      c,
+      400,
+      'EMAIL_OTP_NOT_ENABLED',
+      'Email OTP is not enabled for this account',
+    );
 
   const now = Math.floor(Date.now() / 1000);
   const verification = await c.env.DB.prepare(
@@ -1183,16 +1374,20 @@ auth.post('/2fa/email-otp/verify', async (c) => {
     .first<{ id: string; code_hash: string; attempts: number }>();
 
   if (!verification) {
-    return c.json(
-      { error: 'No valid OTP found. Please request a new code.' },
+    return apiError(
+      c,
       400,
+      'NO_VALID_OTP',
+      'No valid OTP found. Please request a new code.',
     );
   }
 
   if (verification.attempts >= 3) {
-    return c.json(
-      { error: 'Too many failed attempts. Please request a new code.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please request a new code.',
     );
   }
 
@@ -1203,7 +1398,7 @@ auth.post('/2fa/email-otp/verify', async (c) => {
     )
       .bind(verification.id)
       .run();
-    return c.json({ error: 'Invalid code' }, 401);
+    return apiError(c, 401, 'INVALID_CODE', 'Invalid code');
   }
 
   await c.env.DB.prepare(
@@ -1291,14 +1486,19 @@ auth.post('/2fa/passkey/register-verify', requireAuth, async (c) => {
       name?: string;
     }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   const stored = await getAndDeletePasskeyChallenge(
     c.env.LINKS_KV,
     body.challengeId,
   );
   if (stored?.type !== 'registration' || stored.userId !== userId) {
-    return c.json({ error: 'Invalid or expired challenge' }, 400);
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CHALLENGE',
+      'Invalid or expired challenge',
+    );
   }
 
   if (body.name && body.name.length > 64) {
@@ -1317,11 +1517,21 @@ auth.post('/2fa/passkey/register-verify', requireAuth, async (c) => {
       c.env.APP_ORIGIN,
     );
   } catch {
-    return c.json({ error: 'Passkey verification failed' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSKEY_VERIFICATION_FAILED',
+      'Passkey verification failed',
+    );
   }
 
   if (!verification.verified || !verification.registrationInfo) {
-    return c.json({ error: 'Passkey verification failed' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSKEY_VERIFICATION_FAILED',
+      'Passkey verification failed',
+    );
   }
 
   const {
@@ -1369,16 +1579,26 @@ auth.delete('/2fa/passkey/:id', requireAuth, async (c) => {
     .json<{ currentPassword?: string }>()
     .catch(() => ({}) as { currentPassword?: string });
   if (!body.currentPassword)
-    return c.json({ error: 'currentPassword required' }, 400);
+    return apiError(
+      c,
+      400,
+      'CURRENT_PASSWORD_REQUIRED',
+      'currentPassword required',
+    );
 
   const userCheck = await c.env.DB.prepare(
     `SELECT password_hash FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
   )
     .bind(userId)
     .first<Pick<UserRow, 'password_hash'>>();
-  if (!userCheck) return c.json({ error: 'Not found' }, 404);
+  if (!userCheck) return apiError(c, 404, 'NOT_FOUND', 'Not found');
   if (!(await verifyPassword(body.currentPassword, userCheck.password_hash))) {
-    return c.json({ error: 'Current password is incorrect' }, 401);
+    return apiError(
+      c,
+      401,
+      'CURRENT_PASSWORD_INCORRECT',
+      'Current password is incorrect',
+    );
   }
 
   await c.env.DB.prepare(
@@ -1407,23 +1627,38 @@ auth.delete('/2fa/passkey/:id', requireAuth, async (c) => {
 // POST /api/auth/2fa/passkey/verify-options  (during login flow)
 auth.post('/2fa/passkey/verify-options', async (c) => {
   const body = await c.req.json<{ pendingToken: string }>().catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.pendingToken)
-    return c.json({ error: 'pendingToken required' }, 400);
+    return apiError(c, 400, 'PENDING_TOKEN_REQUIRED', 'pendingToken required');
 
   let pending: Awaited<ReturnType<typeof verifyPendingToken>>;
   try {
     pending = await verifyPendingToken(body.pendingToken, c.env.JWT_SECRET);
   } catch {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const storedUserId = await getPending2fa(c.env.LINKS_KV, pending.jti);
   if (!storedUserId) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
   if (storedUserId !== pending.sub) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const optionsAttempts = await incrementPasskeyOptsAttempts(
@@ -1432,7 +1667,12 @@ auth.post('/2fa/passkey/verify-options', async (c) => {
   );
   if (optionsAttempts > 10) {
     await deletePending2fa(c.env.LINKS_KV, pending.jti);
-    return c.json({ error: 'Too many requests. Please log in again.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many requests. Please log in again.',
+    );
   }
 
   const userActive = await c.env.DB.prepare(
@@ -1441,7 +1681,7 @@ auth.post('/2fa/passkey/verify-options', async (c) => {
     .bind(pending.sub)
     .first<Pick<UserRow, 'is_active'>>();
   if (!userActive?.is_active)
-    return c.json({ error: 'Account is disabled' }, 403);
+    return apiError(c, 403, 'ACCOUNT_DISABLED', 'Account is disabled');
 
   const passkeys = await c.env.DB.prepare(
     `SELECT id, transports FROM ${tbl(c.env, 'passkeys')} WHERE user_id = ?1`,
@@ -1478,21 +1718,36 @@ auth.post('/2fa/passkey/verify', async (c) => {
       challengeId: string;
     }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
 
   let pending: Awaited<ReturnType<typeof verifyPendingToken>>;
   try {
     pending = await verifyPendingToken(body.pendingToken, c.env.JWT_SECRET);
   } catch {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const storedUserId = await getPending2fa(c.env.LINKS_KV, pending.jti);
   if (!storedUserId) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
   if (storedUserId !== pending.sub) {
-    return c.json({ error: 'Invalid or expired pending token' }, 401);
+    return apiError(
+      c,
+      401,
+      'INVALID_OR_EXPIRED_PENDING_TOKEN',
+      'Invalid or expired pending token',
+    );
   }
 
   const passkeyAttempts = await increment2faAttempts(
@@ -1501,9 +1756,11 @@ auth.post('/2fa/passkey/verify', async (c) => {
   );
   if (passkeyAttempts > 5) {
     await deletePending2fa(c.env.LINKS_KV, pending.jti);
-    return c.json(
-      { error: 'Too many failed attempts. Please log in again.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please log in again.',
     );
   }
 
@@ -1516,7 +1773,12 @@ auth.post('/2fa/passkey/verify', async (c) => {
     stored.userId !== pending.sub ||
     stored.pendingJti !== pending.jti
   ) {
-    return c.json({ error: 'Invalid or expired challenge' }, 400);
+    return apiError(
+      c,
+      400,
+      'INVALID_OR_EXPIRED_CHALLENGE',
+      'Invalid or expired challenge',
+    );
   }
 
   const passkey = await c.env.DB.prepare(
@@ -1525,7 +1787,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
     .bind((body.response as { id: string }).id, pending.sub)
     .first<PasskeyRow>();
 
-  if (!passkey) return c.json({ error: 'Passkey not found' }, 404);
+  if (!passkey)
+    return apiError(c, 404, 'PASSKEY_NOT_FOUND', 'Passkey not found');
 
   let verification: Awaited<ReturnType<typeof verifyPasskeyAuthentication>>;
   try {
@@ -1537,19 +1800,30 @@ auth.post('/2fa/passkey/verify', async (c) => {
       passkey,
     );
   } catch {
-    return c.json({ error: 'Passkey verification failed' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSKEY_VERIFICATION_FAILED',
+      'Passkey verification failed',
+    );
   }
 
   if (!verification.verified)
-    return c.json({ error: 'Passkey verification failed' }, 401);
+    return apiError(
+      c,
+      401,
+      'PASSKEY_VERIFICATION_FAILED',
+      'Passkey verification failed',
+    );
 
   const user = await c.env.DB.prepare(
     `SELECT * FROM ${tbl(c.env, 'users')} WHERE id = ?1`,
   )
     .bind(pending.sub)
     .first<UserRow>();
-  if (!user) return c.json({ error: 'User not found' }, 404);
-  if (!user.is_active) return c.json({ error: 'Account is disabled' }, 403);
+  if (!user) return apiError(c, 404, 'USER_NOT_FOUND', 'User not found');
+  if (!user.is_active)
+    return apiError(c, 403, 'ACCOUNT_DISABLED', 'Account is disabled');
 
   await c.env.DB.prepare(
     `UPDATE ${tbl(c.env, 'passkeys')} SET counter = ?1, last_used_at = unixepoch() WHERE id = ?2`,
@@ -1603,9 +1877,11 @@ auth.post('/verify-reset-code', async (c) => {
   if (!verification) return c.json({ error: 'Invalid or expired code' }, 400);
 
   if (verification.attempts >= 3) {
-    return c.json(
-      { error: 'Too many failed attempts. Please request a new code.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please request a new code.',
     );
   }
 
@@ -1616,7 +1892,7 @@ auth.post('/verify-reset-code', async (c) => {
     )
       .bind(verification.id)
       .run();
-    return c.json({ error: 'Invalid code' }, 400);
+    return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
   }
 
   return c.json({ success: true });
@@ -1639,7 +1915,12 @@ auth.post('/forgot-password', async (c) => {
     clientIp(c),
   );
   if (!allowed || !ipAllowed) {
-    return c.json({ error: 'Too many requests. Try again later.' }, 429);
+    return apiError(
+      c,
+      429,
+      'TOO_MANY_REQUESTS',
+      'Too many requests. Try again later.',
+    );
   }
 
   const user = await c.env.DB.prepare(
@@ -1698,15 +1979,21 @@ auth.post('/reset-password', async (c) => {
   const body = await c.req
     .json<{ email: string; code: string; newPassword: string }>()
     .catch(() => null);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return apiError(c, 400, 'INVALID_JSON_BODY', 'Invalid JSON body');
   if (!body.email || !body.code || !body.newPassword) {
     return c.json({ error: 'email, code, and newPassword are required' }, 400);
   }
-  if (body.code.length > 6) return c.json({ error: 'Invalid code' }, 400);
+  if (body.code.length > 6)
+    return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
   if (body.newPassword.length < 8)
-    return c.json({ error: 'Password must be at least 8 characters' }, 400);
+    return apiError(
+      c,
+      400,
+      'PASSWORD_TOO_SHORT',
+      'Password must be at least 8 characters',
+    );
   if (body.newPassword.length > 256)
-    return c.json({ error: 'Password too long' }, 400);
+    return apiError(c, 400, 'PASSWORD_TOO_LONG', 'Password too long');
 
   const email = body.email.trim().toLowerCase();
 
@@ -1727,9 +2014,11 @@ auth.post('/reset-password', async (c) => {
   if (!verification) return c.json({ error: 'Invalid or expired code' }, 400);
 
   if (verification.attempts >= 3) {
-    return c.json(
-      { error: 'Too many failed attempts. Please request a new code.' },
+    return apiError(
+      c,
       429,
+      'TOO_MANY_ATTEMPTS',
+      'Too many failed attempts. Please request a new code.',
     );
   }
 
@@ -1740,7 +2029,7 @@ auth.post('/reset-password', async (c) => {
     )
       .bind(verification.id)
       .run();
-    return c.json({ error: 'Invalid code' }, 400);
+    return apiError(c, 400, 'INVALID_CODE', 'Invalid code');
   }
 
   const newHash = await hashPassword(body.newPassword);
