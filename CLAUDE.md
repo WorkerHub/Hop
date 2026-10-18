@@ -277,7 +277,7 @@ Re-visiting the setup URL is safe — already-applied migrations return `"skippe
 
 ## Email Provider Architecture
 
-Two providers are supported, switchable via the `email_provider` setting in the admin UI:
+Two providers are supported, switchable via the `email_provider` setting in the admin UI. After saving your configuration, admins can verify it with **Send test email** (`POST /api/admin/email/test`, rate-limited 5/10min per admin).
 
 ### Resend (default)
 - Provider: `resend`

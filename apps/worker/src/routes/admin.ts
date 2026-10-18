@@ -1,7 +1,14 @@
 import { Hono } from 'hono';
 import { hashPassword } from '../lib/crypto.js';
 import { isUniqueConstraintError, tbl } from '../lib/db.js';
-import { deleteCachedLink, deleteCachedSetting } from '../lib/kv.js';
+import { sendEmail, testEmailHtml } from '../lib/email.js';
+import {
+  checkTestEmailRateLimit,
+  deleteCachedLink,
+  deleteCachedSetting,
+  getCachedSetting,
+  setCachedSetting,
+} from '../lib/kv.js';
 import { runMigrations } from '../lib/migrations-runner.js';
 import { parsePagination } from '../lib/params.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -42,6 +49,18 @@ async function auditLog(
   )
     .bind(adminId, action, targetId, details ? JSON.stringify(details) : null)
     .run();
+}
+
+// Read app_name from DB/KV so admin settings changes take effect immediately.
+async function getAppName(env: Env): Promise<string> {
+  const cached = await getCachedSetting(env.LINKS_KV, 'app_name');
+  if (cached !== null) return cached;
+  const row = await env.DB.prepare(
+    `SELECT value FROM ${tbl(env, 'settings')} WHERE key = 'app_name'`,
+  ).first<{ value: string }>();
+  const val = row?.value ?? env.APP_NAME;
+  await setCachedSetting(env.LINKS_KV, 'app_name', val);
+  return val;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -498,6 +517,67 @@ admin.put('/settings', async (c) => {
     // BE-S1: Mask secrets so they never land in the audit log in plaintext.
     updates: maskSecrets(Object.fromEntries(updates)),
   });
+
+  return c.json({ success: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/email/test
+// ─────────────────────────────────────────────────────────────────────────────
+// Sends a test email using the currently-saved provider configuration so an
+// admin can verify it works. Rate-limited per admin and audited.
+admin.post('/email/test', async (c) => {
+  const adminId = c.get('userId');
+  const body = await c.req.json<{ to?: string }>().catch(() => null);
+  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+  const to = typeof body.to === 'string' ? body.to.trim() : '';
+  if (!to || to.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return c.json({ error: 'Invalid email address' }, 400);
+  }
+
+  // BE-S6: Rate limit per admin (5/10min) to stop an admin account from
+  // mail-bombing arbitrary addresses. Counted on every valid attempt.
+  const { allowed, retryAfter } = await checkTestEmailRateLimit(
+    c.env.LINKS_KV,
+    adminId,
+  );
+  if (!allowed) {
+    return c.json(
+      { error: 'Too many test email attempts. Try again later.' },
+      429,
+      { 'Retry-After': String(retryAfter) },
+    );
+  }
+
+  const appName = await getAppName(c.env);
+
+  try {
+    await sendEmail(c.env, {
+      to,
+      subject: `${appName} Test Email`,
+      html: testEmailHtml(appName),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('not configured')) {
+      // Missing provider config — the message names the missing setting keys,
+      // never their values, so it is safe to surface verbatim.
+      return c.json({ error: message }, 400);
+    }
+    // Upstream failure — log a redacted summary (never the error message, which
+    // can echo SMTP/credential details) and return a generic 502.
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'send test email failed',
+        requestId: c.get('requestId'),
+      }),
+    );
+    return c.json({ error: 'Failed to send test email' }, 502);
+  }
+
+  await auditLog(c.env, adminId, 'test_email', 'email', { to });
 
   return c.json({ success: true });
 });

@@ -301,6 +301,8 @@ GET /:slug  →  302 跳转到目标 URL
 | `smtp_pass` | 字符串 | SMTP 密码（存储在 D1 中） |
 | `setup_page_enabled` | `0` / `1` | 显示（`1`）或隐藏（`0`）setup 页面；只影响页面可见性，绝不关闭 `POST /api/setup` 迁移通道 |
 
+保存邮件提供商配置后，可用「发送测试邮件」（`POST /api/admin/email/test`）验证配置是否可用。
+
 ---
 
 ## 许可证

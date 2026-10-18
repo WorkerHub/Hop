@@ -160,3 +160,22 @@ export function otpEmailHtml(appName: string, code: string): string {
 </html>
   `.trim();
 }
+
+export function testEmailHtml(
+  appName: string,
+  sentAt: Date = new Date(),
+): string {
+  const safeApp = escHtml(appName);
+  const safeTime = escHtml(sentAt.toISOString());
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 16px">
+  <h2 style="color:#1a1a1a">${safeApp} — Test Email</h2>
+  <p style="color:#444;font-size:15px">这是一封测试邮件，说明邮件配置可用。</p>
+  <p style="color:#888;font-size:13px">Sent at ${safeTime}</p>
+</body>
+</html>
+  `.trim();
+}
