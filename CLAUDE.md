@@ -244,7 +244,7 @@ Two files in `apps/worker/migrations/`:
 - `0002_token_version.sql` — adds `users.token_version` for session revocation
 
 **HTTP setup route (production):**
-`POST /api/setup` (legacy alias `/setup`) with a JSON body `{"secret": "<SETUP_SECRET>"}` runs migrations via the shared `lib/migrations-runner.ts` (`runMigrations`). Two migrations:
+The public initialization page lives at `/setup` (an SPA route). `POST /api/setup` with a JSON body `{"secret": "<SETUP_SECRET>"}` runs migrations via the shared `lib/migrations-runner.ts` (`runMigrations`). Two migrations:
 - `schema_v1` — identical DDL as `0001_init.sql`, but parameterized by `TABLE_PREFIX` and tracked in `_schema_migrations` table
 - `schema_v2` — adds `token_version` to `users` (mirrors `0002_token_version.sql`)
 

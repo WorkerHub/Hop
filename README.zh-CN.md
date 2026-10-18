@@ -130,6 +130,8 @@ curl -X POST https://your-worker.workers.dev/api/setup \
 `{ "enabled": true | false }`，反映 `setup_page_enabled` 设置（未设置时默认启用），
 它只隐藏 setup 页面、不会关闭 `POST` 迁移通道。以管理员身份登录后，也可在管理面板
 通过 `POST /api/admin/setup` 触发迁移 — 无需 setup 密钥、不受 IP 限流，且每次执行都会写入审计日志。
+
+初始化页面由 SPA 提供，路径为 `/setup`（非 API 路由）。
 部署后还会通过 Cloudflare API 核对本次上传的版本承载 100% 流量，再检查公开 URL。
 公开 URL 返回带 `cf-mitigated: challenge` 的 403 时仅警告（HTTP/数据库检查未能验证），
 其余非 2xx 或错误的 JSON 均失败；无需关闭 Bot Fight Mode。
