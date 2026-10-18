@@ -1,10 +1,32 @@
 import { Hono } from 'hono';
 import { tbl } from '../lib/db.js';
 import { getCachedLink, setCachedLink } from '../lib/kv.js';
+import { HSTS } from '../lib/security.js';
 import { parseUA } from '../lib/ua.js';
 import type { CachedLink, Env, LinkRow, Variables } from '../types.js';
 
 const redirect = new Hono<{ Bindings: Env; Variables: Variables }>();
+
+// BE-S13: redirect responses carry the minimal security headers that matter on
+// a 302. CSP / X-Content-Type-Options / X-Frame-Options are skipped — the body
+// is empty so there is nothing to sniff, script, or frame. Referrer-Policy:
+// no-referrer stops the short-link origin leaking as the Referer to the
+// destination; HSTS (on https) hardens first-visit downgrade, complementing
+// Cloudflare's Always Use HTTPS.
+function redirectHeaders(
+  appUrl: string,
+  location: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Location: location,
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+  };
+  if (appUrl.startsWith('https')) {
+    headers['Strict-Transport-Security'] = HSTS;
+  }
+  return headers;
+}
 
 redirect.get('/:slug', async (c) => {
   const slug = c.req.param('slug');
@@ -25,10 +47,7 @@ redirect.get('/:slug', async (c) => {
     if (!row) {
       return new Response(null, {
         status: 302,
-        headers: {
-          Location: `${c.env.APP_URL}/404`,
-          'Cache-Control': 'no-store',
-        },
+        headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
       });
     }
 
@@ -50,20 +69,14 @@ redirect.get('/:slug', async (c) => {
   if (!linkData.isActive) {
     return new Response(null, {
       status: 302,
-      headers: {
-        Location: `${c.env.APP_URL}/404`,
-        'Cache-Control': 'no-store',
-      },
+      headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
     });
   }
 
   if (linkData.expiresAt !== null && linkData.expiresAt <= now) {
     return new Response(null, {
       status: 302,
-      headers: {
-        Location: `${c.env.APP_URL}/404`,
-        'Cache-Control': 'no-store',
-      },
+      headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
     });
   }
 
@@ -96,11 +109,7 @@ redirect.get('/:slug', async (c) => {
   // ── 5. Redirect ────────────────────────────────────────────────────────────
   return new Response(null, {
     status: 302,
-    headers: {
-      Location: linkData.url,
-      'Cache-Control': 'no-store',
-      'Referrer-Policy': 'no-referrer',
-    },
+    headers: redirectHeaders(c.env.APP_URL, linkData.url),
   });
 });
 
