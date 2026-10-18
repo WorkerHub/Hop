@@ -53,12 +53,21 @@ interface ApiError {
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code?: string;
+  // FE-S14: the setup endpoint rate-limits per IP and tells the caller how long
+  // to wait via `Retry-After`. Surfaces it so the UI can show the seconds.
+  readonly retryAfter?: number;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    retryAfter?: number,
+  ) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -84,6 +93,14 @@ export class SessionExpiredError extends Error {
 
 export function isSessionExpiredError(error: unknown): boolean {
   return error instanceof SessionExpiredError;
+}
+
+// Parses a `Retry-After` header (seconds) into a non-negative integer, or
+// undefined when absent or unparsable.
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.ceil(n) : undefined;
 }
 
 export function isRetryableError(error: unknown): boolean {
@@ -139,7 +156,12 @@ async function request<T>(
         const err = (await retryRes
           .json()
           .catch(() => ({ error: 'Request failed' }))) as ApiError;
-        throw new ApiRequestError(err.error, retryRes.status, err.code);
+        throw new ApiRequestError(
+          err.error,
+          retryRes.status,
+          err.code,
+          parseRetryAfter(retryRes.headers.get('Retry-After')),
+        );
       }
       return retryRes.json() as Promise<T>;
     }
@@ -158,7 +180,12 @@ async function request<T>(
     const err = (await res
       .json()
       .catch(() => ({ error: 'Request failed' }))) as ApiError;
-    throw new ApiRequestError(err.error, res.status, err.code);
+    throw new ApiRequestError(
+      err.error,
+      res.status,
+      err.code,
+      parseRetryAfter(res.headers.get('Retry-After')),
+    );
   }
 
   if (res.status === 204) return undefined as T;
@@ -606,6 +633,32 @@ export const analyticsApi = {
     }>(`/analytics/${linkId}?days=${days}`),
 };
 
+// ─── Setup API ────────────────────────────────────────────────────────────────
+
+export interface SetupMigration {
+  name: string;
+  status: 'applied' | 'skipped' | 'error';
+  error?: string;
+}
+
+export interface SetupResult {
+  migrations: SetupMigration[];
+}
+
+export const setupApi = {
+  // Public: reports whether the /setup page is enabled (defaults to enabled).
+  state: () =>
+    request<{ enabled: boolean }>('/setup/state', { skipAuth: true }),
+
+  // Public: runs schema migrations keyed to the setup secret.
+  run: (secret: string) =>
+    request<SetupResult>('/setup', {
+      method: 'POST',
+      body: JSON.stringify({ secret }),
+      skipAuth: true,
+    }),
+};
+
 // ─── Admin API ────────────────────────────────────────────────────────────────
 
 export const adminApi = {
@@ -670,6 +723,9 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
+  // Runs the same schema-migration routine as POST /api/setup, keyed to the
+  // admin session (no setup secret required).
+  runSetup: () => request<SetupResult>('/admin/setup', { method: 'POST' }),
 };
 
 // Re-export WebAuthn types used by auth API
