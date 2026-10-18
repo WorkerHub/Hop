@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import App from './App.tsx';
+import { isRetryableError } from './api/client.ts';
 import { AppConfigProvider } from './contexts/AppConfigContext.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
@@ -13,7 +14,11 @@ import './styles/globals.css';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      // FE-R4: one retry, and only when it can plausibly help — transport
+      // failures and 5xx. A 4xx (bad request, not found, session expired) is a
+      // final answer, so retrying it only delays the error.
+      retry: (failureCount, error) =>
+        failureCount < 1 && isRetryableError(error),
       staleTime: 30_000,
     },
   },

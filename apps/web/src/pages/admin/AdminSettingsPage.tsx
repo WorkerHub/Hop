@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAppConfig } from '@/contexts/AppConfigContext';
 import { useTranslation } from '@/i18n';
+import { toastApiError } from '@/lib/toast';
 
 export default function AdminSettingsPage() {
   const { t } = useTranslation();
@@ -78,10 +79,14 @@ export default function AdminSettingsPage() {
       await adminApi.updateSettings({
         registration_enabled: enabled ? 'true' : 'false',
       });
-      toast.success(`Registration ${enabled ? 'enabled' : 'disabled'}`);
+      toast.success(
+        enabled
+          ? t('toast.registrationEnabled')
+          : t('toast.registrationDisabled'),
+      );
     } catch (err) {
       setRegistrationEnabled(!enabled);
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     }
   };
 
@@ -98,7 +103,7 @@ export default function AdminSettingsPage() {
       );
     } catch (err) {
       setRequireEmailVerification(!enabled);
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     }
   };
 
@@ -108,9 +113,9 @@ export default function AdminSettingsPage() {
     try {
       await adminApi.updateSettings({ app_name: appName });
       reloadAppConfig();
-      toast.success('App name updated');
+      toast.success(t('toast.appNameUpdated'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setSavingAppName(false);
     }
@@ -134,9 +139,9 @@ export default function AdminSettingsPage() {
       if (resendApiKey !== '') payload.resend_api_key = resendApiKey;
       if (smtpPass !== '') payload.smtp_pass = smtpPass;
       await adminApi.updateSettings(payload);
-      toast.success('Email settings saved');
+      toast.success(t('toast.emailSettingsSaved'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setSavingEmail(false);
     }

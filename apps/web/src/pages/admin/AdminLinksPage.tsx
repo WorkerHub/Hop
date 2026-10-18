@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import type { Link } from '@/api/client';
 import { adminApi, linksApi } from '@/api/client';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
   LinkActionCell,
   LinkDestinationCell,
@@ -12,16 +13,11 @@ import {
   LinkStatusCell,
 } from '@/components/link-table-cells';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useTranslation } from '@/i18n';
+import { SEARCH_DEBOUNCE_MS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 import { formatDate } from '@/lib/utils';
 import { EditLinkDialog } from '@/pages/dashboard/LinksPage';
 
@@ -29,24 +25,25 @@ export default function AdminLinksPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editLink, setEditLink] = useState<Link | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-links', page, search],
-    queryFn: () => adminApi.links({ page, search: search || undefined }),
+    queryKey: ['admin-links', page, debouncedSearch],
+    queryFn: () =>
+      adminApi.links({ page, search: debouncedSearch || undefined }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => linksApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-links'] });
-      toast.success('Link deleted');
+      toast.success(t('toast.linkDeleted'));
       setDeleteId(null);
     },
-    onError: (err) =>
-      toast.error(err instanceof Error ? err.message : 'Delete failed'),
+    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed')),
   });
 
   return (
@@ -176,26 +173,16 @@ export default function AdminLinksPage() {
         />
       )}
 
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('admin.deleteLink')}</DialogTitle>
-            <DialogDescription>{t('admin.deleteLinkDesc')}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleteMutation.isPending}
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-            >
-              {t('common.delete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(o) => !o && setDeleteId(null)}
+        title={t('admin.deleteLink')}
+        description={t('admin.deleteLinkDesc')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+      />
     </div>
   );
 }
