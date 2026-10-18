@@ -50,7 +50,10 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', async (c, next) => {
   const handler = cors({
     origin: (origin) => {
-      const allowed = [c.env.APP_URL];
+      // Trim APP_URL so a stray leading/trailing space in the variable doesn't
+      // make the allowed-origin list miss every real Origin (which is also why
+      // HSTS went missing in production).
+      const allowed = [c.env.APP_URL.trim()];
       // BE-S10: allow the Vite dev-server origins only when the Worker is reached
       // over plain http on a loopback host (i.e. wrangler dev). A deployed Worker
       // is served from a real hostname, so neither condition holds in production.

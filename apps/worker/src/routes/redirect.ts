@@ -22,7 +22,9 @@ function redirectHeaders(
     'Cache-Control': 'no-store',
     'Referrer-Policy': 'no-referrer',
   };
-  if (appUrl.startsWith('https')) {
+  // Same APP_URL normalization as securityHeaders/CORS: a leading/trailing
+  // space must not silently suppress HSTS here either.
+  if (appUrl.trim().startsWith('https')) {
     headers['Strict-Transport-Security'] = HSTS;
   }
   return headers;
