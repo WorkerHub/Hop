@@ -28,13 +28,68 @@ function handleSessionExpired() {
   if (sessionExpiredHandled) return;
   sessionExpiredHandled = true;
   if (sessionExpiredHandler) sessionExpiredHandler();
-  else window.location.assign('/login');
+  else {
+    // No in-SPA handler registered (should not happen inside AuthProvider):
+    // keep the destination so the user returns after signing in again.
+    const next = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(
+      next.startsWith('/login')
+        ? '/login'
+        : `/login?next=${encodeURIComponent(next)}`,
+    );
+  }
 }
 
 const BASE = '/api';
 
 interface ApiError {
   error: string;
+}
+
+// FE-R4: react-query only retries transport failures and server errors. A 4xx
+// is the server's final answer (validation, auth, not found); retrying it just
+// delays the error the user needs to see.
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+  }
+}
+
+// FE-R4: a transport failure (offline, timeout, DNS) is worth retrying, but it
+// is distinct from an HTTP response — otherwise `isRetryableError` cannot tell
+// a network problem (retry) from a thrown programming/parse error (don't retry).
+export class NetworkError extends Error {
+  constructor(message = 'Network error. Please try again.') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+// #6: the session is over — every request waiting on the same refresh sees this
+// error, so the UI layer must not toast once per request. `isSessionExpiredError`
+// lets callers skip their own error toast; AuthProvider shows a single one.
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+export function isSessionExpiredError(error: unknown): boolean {
+  return error instanceof SessionExpiredError;
+}
+
+export function isRetryableError(error: unknown): boolean {
+  if (isSessionExpiredError(error)) return false;
+  if (error instanceof ApiRequestError) return error.status >= 500;
+  // Only the two classified transport paths are retried: a failed fetch and the
+  // 'transient' refresh outcome (both thrown as NetworkError). Everything else —
+  // a JSON parse failure, a programmer error — is a bug that a retry cannot fix.
+  return error instanceof NetworkError;
 }
 
 async function request<T>(
@@ -51,27 +106,37 @@ async function request<T>(
   }
 
   // H4: credentials: 'include' sends the HttpOnly refresh cookie on every request
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  } catch {
+    throw new NetworkError();
+  }
 
   if (res.status === 401 && !options.skipAuth) {
     // Attempt silent refresh via HttpOnly cookie
     const outcome = await tryRefresh();
     if (outcome === 'ok') {
       headers.Authorization = `Bearer ${accessToken}`;
-      const retryRes = await fetch(`${BASE}${path}`, {
-        ...options,
-        headers,
-        credentials: 'include',
-      });
+      let retryRes: Response;
+      try {
+        retryRes = await fetch(`${BASE}${path}`, {
+          ...options,
+          headers,
+          credentials: 'include',
+        });
+      } catch {
+        throw new NetworkError();
+      }
       if (!retryRes.ok) {
         const err = (await retryRes
           .json()
           .catch(() => ({ error: 'Request failed' }))) as ApiError;
-        throw new Error(err.error);
+        throw new ApiRequestError(err.error, retryRes.status);
       }
       return retryRes.json() as Promise<T>;
     }
@@ -79,18 +144,18 @@ async function request<T>(
       // FE-R1: The refresh never got a verdict (offline, 5xx). The refresh
       // cookie may still be valid, so keep the session and fail just this
       // request — react-query retries, and the next 401 refreshes again.
-      throw new Error('Network error. Please try again.');
+      throw new NetworkError();
     }
     // The server rejected the refresh cookie — the session is really over.
     handleSessionExpired();
-    throw new Error('Session expired');
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
     const err = (await res
       .json()
       .catch(() => ({ error: 'Request failed' }))) as ApiError;
-    throw new Error(err.error);
+    throw new ApiRequestError(err.error, res.status);
   }
 
   if (res.status === 204) return undefined as T;
@@ -170,11 +235,48 @@ export interface User {
   email: string;
   username: string;
   role: 'admin' | 'user';
-  is_active: number;
-  totp_enabled: number;
-  email_2fa_enabled: number;
-  passkey_enabled: number;
+  is_active: boolean;
+  totp_enabled: boolean;
+  email_2fa_enabled: boolean;
+  passkey_enabled: boolean;
   created_at: number;
+}
+
+// FE-Q3: SQLite has no boolean type — flag columns come back as 0/1 numbers.
+// They are normalized once, at the client boundary, so pages deal in real
+// booleans instead of sprinkling `!!x` (one forgotten coercion makes 0 truthy).
+type Booleanish = boolean | number | null | undefined;
+
+interface WireUser {
+  id: string;
+  email: string;
+  username: string;
+  role: 'admin' | 'user';
+  is_active?: Booleanish;
+  totp_enabled?: Booleanish;
+  email_2fa_enabled?: Booleanish;
+  passkey_enabled?: Booleanish;
+  created_at?: number;
+}
+
+function asBoolean(value: Booleanish): boolean {
+  return value === true || value === 1;
+}
+
+function normalizeUser(user: WireUser): User {
+  // Login and /auth/me return only id/email/username/role, so flag columns are
+  // absent there and default to false; the admin user list sends real values.
+  return {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+    is_active: asBoolean(user.is_active),
+    totp_enabled: asBoolean(user.totp_enabled),
+    email_2fa_enabled: asBoolean(user.email_2fa_enabled),
+    passkey_enabled: asBoolean(user.passkey_enabled),
+    created_at: user.created_at ?? 0,
+  };
 }
 
 export interface LoginResult {
@@ -185,28 +287,47 @@ export interface LoginResult {
   user?: User;
 }
 
+interface WireLoginResult extends Omit<LoginResult, 'user'> {
+  user?: WireUser;
+}
+
+function normalizeLoginResult(result: WireLoginResult): LoginResult {
+  const { user, ...rest } = result;
+  return user ? { ...rest, user: normalizeUser(user) } : rest;
+}
+
 export interface RegisterResult {
   user?: User;
   requiresEmailVerification?: boolean;
   userId?: string;
 }
 
+interface WireRegisterResult extends Omit<RegisterResult, 'user'> {
+  user?: WireUser;
+}
+
 export const authApi = {
   register: (email: string, username: string, password: string) =>
-    request<RegisterResult>('/auth/register', {
+    request<WireRegisterResult>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, username, password }),
       skipAuth: true,
+    }).then((result) => {
+      const { user, ...rest } = result;
+      return user ? { ...rest, user: normalizeUser(user) } : rest;
     }),
 
   login: (email: string, password: string) =>
-    request<LoginResult>('/auth/login', {
+    request<WireLoginResult>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
       skipAuth: true,
-    }),
+    }).then(normalizeLoginResult),
 
-  me: () => request<{ user: User }>('/auth/me'),
+  me: () =>
+    request<{ user: WireUser }>('/auth/me').then((result) => ({
+      user: normalizeUser(result.user),
+    })),
 
   logout: () =>
     request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
@@ -226,11 +347,11 @@ export const authApi = {
 
   // Email verification (registration)
   verifyEmail: (userId: string, code: string) =>
-    request<LoginResult>('/auth/verify-email', {
+    request<WireLoginResult>('/auth/verify-email', {
       method: 'POST',
       body: JSON.stringify({ userId, code }),
       skipAuth: true,
-    }),
+    }).then(normalizeLoginResult),
   resendVerifyEmail: (userId: string) =>
     request<{ success: boolean }>('/auth/resend-verify-email', {
       method: 'POST',
@@ -275,11 +396,11 @@ export const authApi = {
       body: JSON.stringify({ currentPassword }),
     }),
   totpVerify: (pendingToken: string, code: string) =>
-    request<LoginResult>('/auth/2fa/totp/verify', {
+    request<WireLoginResult>('/auth/2fa/totp/verify', {
       method: 'POST',
       body: JSON.stringify({ pendingToken, code }),
       skipAuth: true,
-    }),
+    }).then(normalizeLoginResult),
 
   // Email OTP
   emailOtpSendVerify: () =>
@@ -303,11 +424,11 @@ export const authApi = {
       skipAuth: true,
     }),
   emailOtpVerify: (pendingToken: string, code: string) =>
-    request<LoginResult>('/auth/2fa/email-otp/verify', {
+    request<WireLoginResult>('/auth/2fa/email-otp/verify', {
       method: 'POST',
       body: JSON.stringify({ pendingToken, code }),
       skipAuth: true,
-    }),
+    }).then(normalizeLoginResult),
 
   // Passkey
   passkeyList: () =>
@@ -356,11 +477,11 @@ export const authApi = {
     response: AuthenticationResponseJSON,
     challengeId: string,
   ) =>
-    request<LoginResult>('/auth/2fa/passkey/verify', {
+    request<WireLoginResult>('/auth/2fa/passkey/verify', {
       method: 'POST',
       body: JSON.stringify({ pendingToken, response, challengeId }),
       skipAuth: true,
-    }),
+    }).then(normalizeLoginResult),
 };
 
 // ─── Links API ────────────────────────────────────────────────────────────────
@@ -371,11 +492,33 @@ export interface Link {
   destination_url: string;
   title: string | null;
   expires_at: number | null;
-  is_active: number;
+  is_active: boolean;
   user_seq: number;
   created_at: number;
   updated_at?: number;
   click_count?: number;
+}
+
+// FE-Q3: wire shape of a link — `is_active` arrives as SQLite's 0/1.
+interface WireLink {
+  id: string;
+  slug: string;
+  destination_url: string;
+  title: string | null;
+  expires_at: number | null;
+  is_active?: Booleanish;
+  user_seq: number;
+  created_at: number;
+  updated_at?: number;
+  click_count?: number;
+}
+
+// Generic over extra columns (admin links carry seq/user_email) so the
+// normalized result keeps them.
+function normalizeLink<T extends WireLink>(
+  link: T,
+): Omit<T, 'is_active'> & { is_active: boolean } {
+  return { ...link, is_active: asBoolean(link.is_active) };
 }
 
 export interface CreateLinkPayload {
@@ -393,24 +536,30 @@ export const linksApi = {
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.search) qs.set('search', params.search);
     return request<{
-      links: Link[];
+      links: WireLink[];
       pagination: { page: number; limit: number; total: number; pages: number };
-    }>(`/links?${qs}`);
+    }>(`/links?${qs}`).then((result) => ({
+      ...result,
+      links: result.links.map(normalizeLink),
+    }));
   },
-  get: (id: string) => request<{ link: Link }>(`/links/${id}`),
+  get: (id: string) =>
+    request<{ link: WireLink }>(`/links/${id}`).then((result) => ({
+      link: normalizeLink(result.link),
+    })),
   create: (payload: CreateLinkPayload) =>
-    request<{ link: Link }>('/links', {
+    request<{ link: WireLink }>('/links', {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
+    }).then((result) => ({ link: normalizeLink(result.link) })),
   update: (
     id: string,
     payload: Partial<CreateLinkPayload & { isActive: boolean }>,
   ) =>
-    request<{ link: Link }>(`/links/${id}`, {
+    request<{ link: WireLink }>(`/links/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
-    }),
+    }).then((result) => ({ link: normalizeLink(result.link) })),
   delete: (id: string) =>
     request<{ success: boolean }>(`/links/${id}`, { method: 'DELETE' }),
 };
@@ -467,9 +616,12 @@ export const adminApi = {
     if (params?.page) qs.set('page', String(params.page));
     if (params?.search) qs.set('search', params.search);
     return request<{
-      users: User[];
+      users: WireUser[];
       pagination: { page: number; limit: number; total: number; pages: number };
-    }>(`/admin/users?${qs}`);
+    }>(`/admin/users?${qs}`).then((result) => ({
+      ...result,
+      users: result.users.map(normalizeUser),
+    }));
   },
   updateUser: (
     id: string,
@@ -488,10 +640,13 @@ export const adminApi = {
     if (params?.userId) qs.set('userId', params.userId);
     return request<{
       links: Array<
-        Link & { seq: number; user_email: string; user_username: string }
+        WireLink & { seq: number; user_email: string; user_username: string }
       >;
       pagination: { page: number; limit: number; total: number; pages: number };
-    }>(`/admin/links?${qs}`);
+    }>(`/admin/links?${qs}`).then((result) => ({
+      ...result,
+      links: result.links.map(normalizeLink),
+    }));
   },
   createUser: (payload: {
     email: string;
@@ -499,10 +654,10 @@ export const adminApi = {
     password: string;
     role?: 'admin' | 'user';
   }) =>
-    request<{ user: User }>('/admin/users', {
+    request<{ user: WireUser }>('/admin/users', {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
+    }).then((result) => ({ user: normalizeUser(result.user) })),
   getSettings: () =>
     request<{ settings: Record<string, string> }>('/admin/settings'),
   updateSettings: (settings: Record<string, string>) =>

@@ -18,6 +18,8 @@ import { useAppConfig } from '@/contexts/AppConfigContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCountdown } from '@/hooks/use-countdown';
 import { useTranslation } from '@/i18n';
+import { RESEND_COUNTDOWN_SECONDS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 
 type Step = 'form' | 'verify';
 
@@ -54,14 +56,14 @@ export default function RegisterPage() {
       const result = await authApi.register(email, username, password);
       if (result.requiresEmailVerification && result.userId) {
         setUserId(result.userId);
-        startCountdown(600);
+        startCountdown(RESEND_COUNTDOWN_SECONDS);
         setStep('verify');
       } else {
         toast.success(t('auth.accountCreated'));
         navigate('/login');
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed');
+      toastApiError(err, t('toast.registrationFailed'));
     } finally {
       setLoading(false);
     }
@@ -89,7 +91,7 @@ export default function RegisterPage() {
       await refreshUser();
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Verification failed');
+      toastApiError(err, t('toast.verificationFailed'));
     } finally {
       setLoading(false);
     }
@@ -100,10 +102,10 @@ export default function RegisterPage() {
     try {
       await authApi.resendVerifyEmail(userId);
       setCode('');
-      startCountdown(600);
+      startCountdown(RESEND_COUNTDOWN_SECONDS);
       toast.success(t('auth.verifyCodeResent'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to resend code');
+      toastApiError(err, t('toast.sendCodeFailed'));
     } finally {
       setLoading(false);
     }

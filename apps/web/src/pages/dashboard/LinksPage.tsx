@@ -3,6 +3,7 @@ import { Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { type CreateLinkPayload, type Link, linksApi } from '@/api/client';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
   LinkActionCell,
   LinkDestinationCell,
@@ -14,14 +15,16 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useTranslation } from '@/i18n';
+import { SEARCH_DEBOUNCE_MS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 import {
   formatDate,
   fromDatetimeLocalValue,
@@ -32,26 +35,30 @@ export default function LinksPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [editLink, setEditLink] = useState<Link | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['links', page, search],
+    queryKey: ['links', page, debouncedSearch],
     queryFn: () =>
-      linksApi.list({ page, limit: 20, search: search || undefined }),
+      linksApi.list({
+        page,
+        limit: 20,
+        search: debouncedSearch || undefined,
+      }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => linksApi.delete(id),
     onSuccess: () => {
-      toast.success('Link deleted');
+      toast.success(t('toast.linkDeleted'));
       queryClient.invalidateQueries({ queryKey: ['links'] });
       setDeleteId(null);
     },
-    onError: (err) =>
-      toast.error(err instanceof Error ? err.message : 'Delete failed'),
+    onError: (err) => toastApiError(err, t('toast.deleteLinkFailed')),
   });
 
   return (
@@ -195,26 +202,16 @@ export default function LinksPage() {
         />
       )}
 
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('links.deleteTitle')}</DialogTitle>
-            <DialogDescription>{t('links.deleteDesc')}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleteMutation.isPending}
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-            >
-              {t('common.delete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(o) => !o && setDeleteId(null)}
+        title={t('links.deleteTitle')}
+        description={t('links.deleteDesc')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+      />
     </div>
   );
 }
@@ -253,13 +250,13 @@ function CreateLinkDialog({
         payload.expiryDays = parseInt(expiryOption, 10);
       }
       await linksApi.create(payload);
-      toast.success('Link created!');
+      toast.success(t('toast.linkCreated'));
       setForm({ destinationUrl: '' });
       setExpiryOption('never');
       setCustomExpiry('');
       onCreated();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create link');
+      toastApiError(err, t('toast.createLinkFailed'));
     } finally {
       setLoading(false);
     }
@@ -378,7 +375,8 @@ export function EditLinkDialog({
     destinationUrl: link.destination_url,
     customSlug: link.slug,
     title: link.title ?? '',
-    isActive: !!link.is_active,
+    // FE-Q3: `is_active` is a boolean after client normalization.
+    isActive: link.is_active,
   });
   const [expiresAt, setExpiresAt] = useState<number | null>(link.expires_at);
   const [loading, setLoading] = useState(false);
@@ -396,10 +394,10 @@ export function EditLinkDialog({
         // expiry would make the backend reject edits to an expired link.
         ...(expiresAt !== link.expires_at && { expiresAt }),
       });
-      toast.success('Link updated');
+      toast.success(t('toast.linkUpdated'));
       onUpdated();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toastApiError(err, t('toast.updateLinkFailed'));
     } finally {
       setLoading(false);
     }

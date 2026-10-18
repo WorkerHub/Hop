@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { toast } from 'sonner';
 import {
   authApi,
   getAccessToken,
@@ -17,6 +18,7 @@ import {
   setSessionExpiredHandler,
   type User,
 } from '../api/client.ts';
+import { useTranslation } from '../i18n/index.tsx';
 
 interface AuthContextType {
   user: User | null;
@@ -52,12 +54,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // H-1: BroadcastChannel for cross-tab login/logout coordination (signal only)
   const channelRef = useRef<BroadcastChannel | null>(null);
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  // Keep the latest translator without re-registering the expiry handler on
+  // every render (`t` is a new function each render).
+  const translateRef = useRef(t);
+  useEffect(() => {
+    translateRef.current = t;
+  }, [t]);
 
   // FE-R2: End an expired session in-SPA. Clearing the user lets
-  // ProtectedRoute/AdminRoute redirect to /login, replacing the per-request
-  // `window.location.href = '/login'` hard reloads.
+  // ProtectedRoute/AdminRoute redirect to /login (with ?next=), replacing the
+  // per-request `window.location.href = '/login'` hard reloads.
+  // #6: the client reports an expired session only once per session, so this is
+  // also the single place the user is told about it — individual requests stay
+  // silent (see lib/toast.ts).
   useEffect(() => {
-    setSessionExpiredHandler(() => setUser(null));
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      toast.error(translateRef.current('toast.sessionExpired'));
+    });
     return () => setSessionExpiredHandler(null);
   }, []);
 

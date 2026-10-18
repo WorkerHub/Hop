@@ -1,6 +1,6 @@
 import { startAuthentication } from '@simplewebauthn/browser';
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { LoginResult } from '@/api/client';
 import { authApi, setAccessToken } from '@/api/client';
@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { OtpInput } from '@/components/ui/otp-input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from '@/i18n';
+import { toastApiError } from '@/lib/toast';
+import { safeNextPath } from '@/lib/utils';
 
 type Tab = 'totp' | 'email_otp' | 'passkey';
 
@@ -29,6 +31,9 @@ export default function TwoFactorPage() {
   } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // FE-R5: destination forwarded from the login page (?next=).
+  const next = safeNextPath(searchParams.get('next'));
   const [tab, setTab] = useState<Tab>(
     (pendingMethods[0] as Tab | undefined) ?? 'totp',
   );
@@ -38,11 +43,17 @@ export default function TwoFactorPage() {
 
   // FE-C3: Redirect declaratively — calling navigate() during render is a side
   // effect React may run twice (StrictMode) or warn about.
-  if (!pendingToken) return <Navigate to="/login" replace />;
+  if (!pendingToken)
+    return (
+      <Navigate
+        to={next ? `/login?next=${encodeURIComponent(next)}` : '/login'}
+        replace
+      />
+    );
 
   const handleSuccess = async (result: LoginResult) => {
     if (!result.accessToken) {
-      toast.error('Verification failed');
+      toast.error(t('toast.verificationFailed'));
       return;
     }
     setAccessToken(result.accessToken);
@@ -50,7 +61,7 @@ export default function TwoFactorPage() {
     await refreshUser();
     // Leave the page before clearing the pending state: clearing it first
     // re-renders this page without a pendingToken and flashes /login.
-    navigate('/dashboard', { replace: true });
+    navigate(next ?? '/dashboard', { replace: true });
     clearPendingState();
   };
 
@@ -61,7 +72,7 @@ export default function TwoFactorPage() {
       const result = await authApi.totpVerify(pendingToken, code);
       await handleSuccess(result);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Invalid code');
+      toastApiError(err, t('toast.invalidCode'));
     } finally {
       setLoading(false);
     }
@@ -72,9 +83,9 @@ export default function TwoFactorPage() {
     try {
       await authApi.emailOtpSend(pendingToken);
       setOtpSent(true);
-      toast.success('Code sent to your email');
+      toast.success(t('toast.codeSent'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send code');
+      toastApiError(err, t('toast.sendCodeFailed'));
     } finally {
       setLoading(false);
     }
@@ -87,7 +98,7 @@ export default function TwoFactorPage() {
       const result = await authApi.emailOtpVerify(pendingToken, code);
       await handleSuccess(result);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Invalid code');
+      toastApiError(err, t('toast.invalidCode'));
     } finally {
       setLoading(false);
     }
@@ -106,9 +117,7 @@ export default function TwoFactorPage() {
       );
       await handleSuccess(result);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'Passkey authentication failed',
-      );
+      toastApiError(err, t('toast.passkeyAuthFailed'));
     } finally {
       setLoading(false);
     }

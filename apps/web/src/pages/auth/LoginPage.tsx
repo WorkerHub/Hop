@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthCard } from '@/components/ui/auth-card';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { useAppConfig } from '@/contexts/AppConfigContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from '@/i18n';
+import { toastApiError } from '@/lib/toast';
+import { safeNextPath } from '@/lib/utils';
 
 export default function LoginPage() {
   const { login, setPendingState } = useAuth();
@@ -24,6 +25,9 @@ export default function LoginPage() {
   } = useAppConfig();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // FE-R5: where to return after signing in; only same-origin paths are kept.
+  const next = safeNextPath(searchParams.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,12 +39,15 @@ export default function LoginPage() {
       const result = await login(email, password);
       if (result.requiresTwoFactor && result.pendingToken && result.methods) {
         setPendingState(result.pendingToken, result.methods);
-        navigate('/two-factor');
+        // Carry the destination through the second factor step too.
+        navigate(
+          next ? `/two-factor?next=${encodeURIComponent(next)}` : '/two-factor',
+        );
       } else {
-        navigate('/dashboard');
+        navigate(next ?? '/dashboard', { replace: true });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Login failed');
+      toastApiError(err, t('toast.loginFailed'));
     } finally {
       setLoading(false);
     }

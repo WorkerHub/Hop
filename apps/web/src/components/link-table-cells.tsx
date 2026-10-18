@@ -8,23 +8,26 @@ import { useTranslation } from '@/i18n';
 import {
   buildShortUrl,
   copyToClipboard,
-  expiryLabel,
+  expiryParts,
   isExpired,
   isSafeUrl,
 } from '@/lib/utils';
 
 export function LinkSlugCell({ slug }: { slug: string }) {
+  const { t } = useTranslation();
   return (
     <td className="px-4 py-3 font-mono">
       <div className="flex items-center gap-1">
         <span className="text-primary">{slug}</span>
         <button
           type="button"
-          onClick={() =>
-            copyToClipboard(buildShortUrl(slug)).then(() =>
-              toast.success('Copied!'),
-            )
-          }
+          onClick={() => {
+            // FE-R5: clipboard access can be denied (permissions, insecure
+            // context) — report it instead of leaving a rejected promise.
+            copyToClipboard(buildShortUrl(slug))
+              .then(() => toast.success(t('toast.copied')))
+              .catch(() => toast.error(t('toast.copyFailed')));
+          }}
           className="text-muted-foreground hover:text-foreground"
         >
           <Copy className="h-3 w-3" />
@@ -56,18 +59,35 @@ export function LinkDestinationCell({ url }: { url: string }) {
 }
 
 export function LinkExpiryCell({ expiresAt }: { expiresAt: number | null }) {
-  return (
-    <td className="px-4 py-3 text-muted-foreground">
-      {expiryLabel(expiresAt)}
-    </td>
-  );
+  const { t } = useTranslation();
+  const parts = expiryParts(expiresAt);
+  let label: string;
+  switch (parts.kind) {
+    case 'never':
+      label = t('common.never');
+      break;
+    case 'expired':
+      label = t('common.expired');
+      break;
+    case 'minutes':
+      label = t('links.minutesRemaining', { count: parts.value });
+      break;
+    case 'hours':
+      label = t('links.hoursRemaining', { count: parts.value });
+      break;
+    case 'days':
+      label = t('links.daysRemaining', { count: parts.value });
+      break;
+  }
+  return <td className="px-4 py-3 text-muted-foreground">{label}</td>;
 }
 
 export function LinkStatusCell({
   isActive,
   expiresAt,
 }: {
-  isActive: number;
+  // FE-Q3: normalized to a real boolean in the API client.
+  isActive: boolean;
   expiresAt: number | null;
 }) {
   const { t } = useTranslation();

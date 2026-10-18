@@ -30,6 +30,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { type Theme, useTheme } from '@/contexts/ThemeContext';
 import { useCountdown } from '@/hooks/use-countdown';
 import { type Lang, useTranslation } from '@/i18n';
+import { RESEND_COUNTDOWN_SECONDS } from '@/lib/constants';
+import { toastApiError } from '@/lib/toast';
 import { formatDate } from '@/lib/utils';
 
 export default function SettingsPage() {
@@ -134,10 +136,10 @@ function ChangePasswordCard() {
     setLoading(true);
     try {
       await authApi.changePassword(form.currentPassword, form.newPassword);
-      toast.success('Password updated');
+      toast.success(t('toast.passwordUpdated'));
       setForm({ currentPassword: '', newPassword: '', confirm: '' });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
@@ -237,7 +239,7 @@ function TotpCard({
       setSetupData(data);
       setShowSetup(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
@@ -249,10 +251,10 @@ function TotpCard({
     try {
       const result = await authApi.totpConfirm(code);
       setBackupCodes(result.backupCodes);
-      toast.success('TOTP enabled!');
+      toast.success(t('toast.totpEnabled'));
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Invalid code');
+      toastApiError(err, t('toast.invalidCode'));
     } finally {
       setLoading(false);
     }
@@ -262,18 +264,19 @@ function TotpCard({
     setLoading(true);
     try {
       await authApi.totpDisable(disablePassword);
-      toast.success('TOTP disabled');
+      toast.success(t('toast.totpDisabled'));
       setShowDisableDialog(false);
       setDisablePassword('');
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
   };
 
-  const enabled = !!user?.totp_enabled;
+  // FE-Q3: already a boolean from the API client.
+  const enabled = user?.totp_enabled ?? false;
 
   return (
     <Card>
@@ -452,12 +455,12 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
         challengeId,
         newName || undefined,
       );
-      toast.success('Passkey registered!');
+      toast.success(t('toast.passkeyRegistered'));
       setNewName('');
       queryClient.invalidateQueries({ queryKey: ['passkeys'] });
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed');
+      toastApiError(err, t('toast.registrationFailed'));
     } finally {
       setLoading(false);
     }
@@ -468,13 +471,13 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
     setLoading(true);
     try {
       await authApi.passkeyDelete(deleteId, deletePassword);
-      toast.success('Passkey removed');
+      toast.success(t('toast.passkeyRemoved'));
       setDeleteId(null);
       setDeletePassword('');
       queryClient.invalidateQueries({ queryKey: ['passkeys'] });
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
@@ -593,16 +596,17 @@ function EmailOtpCard({
   const { countdown, start: startCountdown } = useCountdown();
   const [disablePassword, setDisablePassword] = useState('');
   const [showDisableDialog, setShowDisableDialog] = useState(false);
-  const enabled = !!user?.email_2fa_enabled;
+  // FE-Q3: already a boolean from the API client.
+  const enabled = user?.email_2fa_enabled ?? false;
 
   const sendVerifyCode = async () => {
     setLoading(true);
     try {
       await authApi.emailOtpSendVerify();
       setCodeSent(true);
-      startCountdown(600);
+      startCountdown(RESEND_COUNTDOWN_SECONDS);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send code');
+      toastApiError(err, t('toast.sendCodeFailed'));
     } finally {
       setLoading(false);
     }
@@ -613,13 +617,13 @@ function EmailOtpCard({
     setLoading(true);
     try {
       await authApi.emailOtpEnable(verifyCode);
-      toast.success('Email OTP enabled');
+      toast.success(t('toast.emailOtpEnabled'));
       setShowEnableDialog(false);
       setCodeSent(false);
       setVerifyCode('');
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
@@ -636,12 +640,12 @@ function EmailOtpCard({
     setLoading(true);
     try {
       await authApi.emailOtpDisable(disablePassword);
-      toast.success('Email OTP disabled');
+      toast.success(t('toast.emailOtpDisabled'));
       setShowDisableDialog(false);
       setDisablePassword('');
       onUpdate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toastApiError(err, t('toast.requestFailed'));
     } finally {
       setLoading(false);
     }
