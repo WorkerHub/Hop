@@ -252,33 +252,6 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Setup page toggle */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {t('admin.setupPageToggle')}
-          </CardTitle>
-          <CardDescription>{t('admin.setupPageDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3">
-            <Switch
-              id="setup-page-toggle"
-              checked={setupPageEnabled}
-              onCheckedChange={handleSetupPageToggle}
-            />
-            <Label htmlFor="setup-page-toggle">
-              {t('admin.setupPageCurrent')}{' '}
-              <strong>
-                {setupPageEnabled
-                  ? t('admin.setupPageEnabled')
-                  : t('admin.setupPageDisabled')}
-              </strong>
-            </Label>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* App name */}
       <Card>
         <CardHeader>
@@ -466,6 +439,33 @@ export default function AdminSettingsPage() {
               {t('common.save')}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Setup page toggle */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {t('admin.setupPageToggle')}
+          </CardTitle>
+          <CardDescription>{t('admin.setupPageDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="setup-page-toggle"
+              checked={setupPageEnabled}
+              onCheckedChange={handleSetupPageToggle}
+            />
+            <Label htmlFor="setup-page-toggle">
+              {t('admin.setupPageCurrent')}{' '}
+              <strong>
+                {setupPageEnabled
+                  ? t('admin.setupPageEnabled')
+                  : t('admin.setupPageDisabled')}
+              </strong>
+            </Label>
+          </div>
         </CardContent>
       </Card>
 
