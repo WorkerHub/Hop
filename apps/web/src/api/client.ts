@@ -44,6 +44,7 @@ const BASE = '/api';
 
 interface ApiError {
   error: string;
+  code?: string;
 }
 
 // FE-R4: react-query only retries transport failures and server errors. A 4xx
@@ -51,11 +52,13 @@ interface ApiError {
 // delays the error the user needs to see.
 export class ApiRequestError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -136,7 +139,7 @@ async function request<T>(
         const err = (await retryRes
           .json()
           .catch(() => ({ error: 'Request failed' }))) as ApiError;
-        throw new ApiRequestError(err.error, retryRes.status);
+        throw new ApiRequestError(err.error, retryRes.status, err.code);
       }
       return retryRes.json() as Promise<T>;
     }
@@ -155,7 +158,7 @@ async function request<T>(
     const err = (await res
       .json()
       .catch(() => ({ error: 'Request failed' }))) as ApiError;
-    throw new ApiRequestError(err.error, res.status);
+    throw new ApiRequestError(err.error, res.status, err.code);
   }
 
   if (res.status === 204) return undefined as T;

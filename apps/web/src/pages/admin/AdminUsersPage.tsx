@@ -51,7 +51,7 @@ export default function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       toast.success(t('toast.userUpdated'));
     },
-    onError: (err) => toastApiError(err, t('toast.updateUserFailed')),
+    onError: (err) => toastApiError(err, t('toast.updateUserFailed'), t),
   });
 
   const deleteMutation = useMutation({
@@ -61,7 +61,7 @@ export default function AdminUsersPage() {
       toast.success(t('toast.userDeleted'));
       setDeleteId(null);
     },
-    onError: (err) => toastApiError(err, t('toast.deleteUserFailed')),
+    onError: (err) => toastApiError(err, t('toast.deleteUserFailed'), t),
   });
 
   // FE-C5: while any mutation (update or delete) is in flight for a user, all of
@@ -297,7 +297,7 @@ function CreateUserDialog({
       setForm({ email: '', username: '', password: '', role: 'user' });
       onCreated();
     } catch (err) {
-      toastApiError(err, t('toast.createUserFailed'));
+      toastApiError(err, t('toast.createUserFailed'), t);
     } finally {
       setLoading(false);
     }

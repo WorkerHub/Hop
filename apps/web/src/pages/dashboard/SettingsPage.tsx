@@ -139,7 +139,7 @@ function ChangePasswordCard() {
       toast.success(t('toast.passwordUpdated'));
       setForm({ currentPassword: '', newPassword: '', confirm: '' });
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -239,7 +239,7 @@ function TotpCard({
       setSetupData(data);
       setShowSetup(true);
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -254,7 +254,7 @@ function TotpCard({
       toast.success(t('toast.totpEnabled'));
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.invalidCode'));
+      toastApiError(err, t('toast.invalidCode'), t);
     } finally {
       setLoading(false);
     }
@@ -269,7 +269,7 @@ function TotpCard({
       setDisablePassword('');
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -460,7 +460,7 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
       queryClient.invalidateQueries({ queryKey: ['passkeys'] });
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.registrationFailed'));
+      toastApiError(err, t('toast.registrationFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -477,7 +477,7 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
       queryClient.invalidateQueries({ queryKey: ['passkeys'] });
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -606,7 +606,7 @@ function EmailOtpCard({
       setCodeSent(true);
       startCountdown(RESEND_COUNTDOWN_SECONDS);
     } catch (err) {
-      toastApiError(err, t('toast.sendCodeFailed'));
+      toastApiError(err, t('toast.sendCodeFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -623,7 +623,7 @@ function EmailOtpCard({
       setVerifyCode('');
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }
@@ -645,7 +645,7 @@ function EmailOtpCard({
       setDisablePassword('');
       onUpdate();
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setLoading(false);
     }

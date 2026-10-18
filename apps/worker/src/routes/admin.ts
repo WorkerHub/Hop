@@ -59,10 +59,10 @@ admin.get('/stats', async (c) => {
   ]);
 
   return c.json({
-    users: (users?.results[0] as { n: number }).n,
-    links: (links?.results[0] as { n: number }).n,
-    clicksToday: (clicksToday?.results[0] as { n: number }).n,
-    clicksTotal: (clicksTotal?.results[0] as { n: number }).n,
+    users: (users?.results[0] as { n: number } | undefined)?.n ?? 0,
+    links: (links?.results[0] as { n: number } | undefined)?.n ?? 0,
+    clicksToday: (clicksToday?.results[0] as { n: number } | undefined)?.n ?? 0,
+    clicksTotal: (clicksTotal?.results[0] as { n: number } | undefined)?.n ?? 0,
   });
 });
 

@@ -47,7 +47,7 @@ export default function LoginPage() {
         navigate(next ?? '/dashboard', { replace: true });
       }
     } catch (err) {
-      toastApiError(err, t('toast.loginFailed'));
+      toastApiError(err, t('toast.loginFailed'), t);
     } finally {
       setLoading(false);
     }

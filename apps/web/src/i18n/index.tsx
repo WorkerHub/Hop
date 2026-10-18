@@ -31,6 +31,11 @@ type DeepKeys<T, P extends string = ''> = {
 
 export type TranslationKey = DeepKeys<Translations>;
 
+export type TFunction = (
+  key: TranslationKey,
+  params?: Record<string, string | number>,
+) => string;
+
 function resolve(obj: unknown, path: string): string {
   const parts = path.split('.');
   let curr = obj;

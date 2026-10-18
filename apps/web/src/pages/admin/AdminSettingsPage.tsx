@@ -86,7 +86,7 @@ export default function AdminSettingsPage() {
       );
     } catch (err) {
       setRegistrationEnabled(!enabled);
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     }
   };
 
@@ -103,7 +103,7 @@ export default function AdminSettingsPage() {
       );
     } catch (err) {
       setRequireEmailVerification(!enabled);
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     }
   };
 
@@ -115,7 +115,7 @@ export default function AdminSettingsPage() {
       reloadAppConfig();
       toast.success(t('toast.appNameUpdated'));
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setSavingAppName(false);
     }
@@ -141,7 +141,7 @@ export default function AdminSettingsPage() {
       await adminApi.updateSettings(payload);
       toast.success(t('toast.emailSettingsSaved'));
     } catch (err) {
-      toastApiError(err, t('toast.requestFailed'));
+      toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setSavingEmail(false);
     }

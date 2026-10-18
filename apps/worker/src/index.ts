@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { tbl } from './lib/db.js';
+import { apiError } from './lib/errors.js';
 import { getCachedSetting, setCachedSetting } from './lib/kv.js';
 import { API_CSP, SPA_CSP, securityHeaders } from './lib/security.js';
 import { RESERVED_SLUGS } from './lib/slug.js';
@@ -32,7 +33,7 @@ app.onError((err, c) => {
       requestId: c.get('requestId'),
     }),
   );
-  return c.json({ error: 'Internal Server Error' }, 500);
+  return apiError(c, 500, 'INTERNAL_SERVER_ERROR', 'Internal Server Error');
 });
 
 // ─── Security headers ─────────────────────────────────────────────────────────
@@ -117,6 +118,15 @@ app.route('/setup', setupRoutes);
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
 
+// ─── Unmatched API requests ───────────────────────────────────────────────────
+// Any /api/* request that no route above handled (unknown path, or a known path
+// with the wrong HTTP method — e.g. GET on a POST-only endpoint) must return a
+// JSON 404, never the SPA's index.html. The SPA fallback below stays for
+// non-/api paths only.
+app.all('/api/*', (c) => {
+  return apiError(c, 404, 'NOT_FOUND', 'Not found');
+});
+
 // ─── Short link redirect ───────────────────────────────────────────────────────
 const SPA_PREFIXES = new Set([...RESERVED_SLUGS].map((s) => `/${s}`));
 
@@ -145,6 +155,8 @@ app.all('*', async (c) => {
   }
   return new Response(res.body, { status: res.status, headers });
 });
+
+export { app };
 
 export default {
   fetch: app.fetch,
