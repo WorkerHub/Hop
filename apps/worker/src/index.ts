@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { tbl } from './lib/db.js';
 import { apiError } from './lib/errors.js';
 import { getCachedSetting, setCachedSetting } from './lib/kv.js';
-import { API_CSP, SPA_CSP, securityHeaders } from './lib/security.js';
+import { API_CSP, securityHeaders, spaCsp } from './lib/security.js';
 import { RESERVED_SLUGS } from './lib/slug.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
@@ -50,7 +50,10 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', async (c, next) => {
   const handler = cors({
     origin: (origin) => {
-      const allowed = [c.env.APP_URL];
+      // Trim APP_URL so a stray leading/trailing space in the variable doesn't
+      // make the allowed-origin list miss every real Origin (which is also why
+      // HSTS went missing in production).
+      const allowed = [c.env.APP_URL.trim()];
       // BE-S10: allow the Vite dev-server origins only when the Worker is reached
       // over plain http on a loopback host (i.e. wrangler dev). A deployed Worker
       // is served from a real hostname, so neither condition holds in production.
@@ -148,8 +151,15 @@ app.all('*', async (c) => {
   // BE-S11: the /api/* middleware above does not cover SPA/static responses, so
   // attach security headers (including a Vite-compatible CSP) here.
   const headers = new Headers(res.headers);
+  // BE-S13: give HTML responses a fresh nonce so Cloudflare's JavaScript
+  // Detections (Bot Fight Mode) can stamp it onto the inline challenge script it
+  // injects, instead of being blocked by script-src. Static assets get no nonce
+  // (meaningless there), so the CSP stays unchanged for them.
+  const nonce = (headers.get('content-type') ?? '').includes('text/html')
+    ? crypto.randomUUID()
+    : undefined;
   for (const [k, v] of Object.entries(
-    securityHeaders(c.env.APP_URL, SPA_CSP),
+    securityHeaders(c.env.APP_URL, spaCsp(nonce)),
   )) {
     headers.set(k, v);
   }
