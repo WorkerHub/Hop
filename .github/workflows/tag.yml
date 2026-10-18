@@ -59,13 +59,16 @@ jobs:
             const sha = stdout.trim();
             core.info(`Checking CI status for main@${sha}`);
             // Filter by workflow file (not the repo-wide list) so this very tag
-            // workflow run is not mistaken for CI, and only accept a push run.
+            // workflow run is not mistaken for CI, and only accept a push run
+            // on main. `branch: 'main'` pins it to main so a tds/** push run at
+            // the same commit can never satisfy the check.
             const { data } = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: process.env.WORKFLOW_FILE,
               head_sha: sha,
               event: 'push',
+              branch: 'main',
             });
             const ciRun = data.workflow_runs.find(
               (run) => run.status === 'completed' && run.conclusion === 'success',

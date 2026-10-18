@@ -20,12 +20,16 @@ concurrency:
 jobs:
   deploy:
     # workflow_run: only after a successful CI run for a push to this repo's
-    # main (the `branches` filter alone also matches fork PRs from a branch
-    # named "main"). workflow_dispatch: only from main.
+    # main. The `branches: [main]` filter on the trigger already excludes other
+    # branches (including tds/**), and `head_branch == 'main'` below re-asserts
+    # it at the job level so a non-main CI run can never reach production.
+    # `head_repository` also blocks fork PRs whose branch happens to be "main".
+    # workflow_dispatch: only from main.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
