@@ -9,6 +9,18 @@ interface EmailPayload {
   html: string;
 }
 
+// Thrown when the selected provider's required settings are missing. Callers
+// distinguish this from an upstream send failure via `instanceof` rather than
+// matching the message text — an SMTP server reply can itself contain the words
+// "not configured" (e.g. "554 Server not configured for mail"), which a
+// substring check would misclassify as a configuration error.
+export class EmailConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailConfigError';
+  }
+}
+
 // Read a setting from KV cache → DB, then populate the cache on a miss.
 async function getSetting(env: Env, key: string): Promise<string> {
   const cached = await getCachedSetting(env.LINKS_KV, key);
@@ -40,7 +52,7 @@ export async function sendEmail(
     ]);
 
     if (!host || !from) {
-      throw new Error(
+      throw new EmailConfigError(
         'SMTP is selected as email provider but smtp_host or smtp_from is not configured',
       );
     }
@@ -64,7 +76,7 @@ export async function sendEmail(
   ]);
 
   if (!apiKey || !fromDomain) {
-    throw new Error(
+    throw new EmailConfigError(
       'Resend is selected as email provider but resend_api_key or email_from_domain is not configured in admin settings',
     );
   }
@@ -156,6 +168,25 @@ export function otpEmailHtml(appName: string, code: string): string {
     <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#1a1a1a">${code}</span>
   </div>
   <p style="color:#888;font-size:13px">This code expires in 10 minutes. Do not share it with anyone.</p>
+</body>
+</html>
+  `.trim();
+}
+
+export function testEmailHtml(
+  appName: string,
+  sentAt: Date = new Date(),
+): string {
+  const safeApp = escHtml(appName);
+  const safeTime = escHtml(sentAt.toISOString());
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 16px">
+  <h2 style="color:#1a1a1a">${safeApp} — Test Email</h2>
+  <p style="color:#444;font-size:15px">这是一封测试邮件，说明邮件配置可用。</p>
+  <p style="color:#888;font-size:13px">Sent at ${safeTime}</p>
 </body>
 </html>
   `.trim();

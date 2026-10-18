@@ -309,6 +309,8 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 | `smtp_pass` | string | SMTP password (stored in D1) |
 | `setup_page_enabled` | `0` / `1` | Show (`1`) or hide (`0`) the setup page; only affects page visibility, never the `POST /api/setup` migration channel |
 
+After saving your email provider configuration, use **Send test email** (`POST /api/admin/email/test`) to verify it works.
+
 ---
 
 ## License

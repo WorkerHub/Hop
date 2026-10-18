@@ -22,6 +22,8 @@ const KV_PREFIX = {
   jtiDeny: (jti: string) => `jti_deny:${jti}`,
   // R4-L4: TOTP confirm rate limiting per user
   totpConfirmAttempts: (userId: string) => `totp_confirm:${userId}`,
+  // BE-S6: Per-admin "send test email" rate limiting (5/10min)
+  testEmailRate: (adminId: string) => `test_email_rate:${adminId}`,
 };
 
 // ─── Link cache ───────────────────────────────────────────────────────────────
@@ -269,6 +271,22 @@ export async function checkSetupRateLimit(
   ip: string,
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   return fixedWindowIncrementWithRetry(kv, KV_PREFIX.setupRate(ip), 3, 600);
+}
+
+// BE-S6: Per-admin rate limit for the "send test email" endpoint (5/10min) —
+// prevents an admin account from mail-bombing arbitrary addresses. Returns
+// whether the attempt is allowed and, when not, how many seconds remain in the
+// window so the caller can send an exact Retry-After header.
+export async function checkTestEmailRateLimit(
+  kv: KVNamespace,
+  adminId: string,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  return fixedWindowIncrementWithRetry(
+    kv,
+    KV_PREFIX.testEmailRate(adminId),
+    5,
+    600,
+  );
 }
 
 // ─── 2FA attempt tracking (C2: max 5 per pending token) ──────────────────────
