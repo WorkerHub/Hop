@@ -1,6 +1,7 @@
 // Setup endpoint tests — GET /api/setup/state (public), POST /api/setup (JSON
-// body + legacy header, per-IP rate limit), GET /api/setup/* (405), and the
-// admin keyless upgrade POST /api/admin/setup (shared migration runner + audit).
+// body + legacy header, per-IP rate limit), GET /api/setup/* (405), the SPA
+// page at GET /setup, and the admin keyless upgrade POST /api/admin/setup
+// (shared migration runner + audit).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { app } from '../src/index.ts';
@@ -70,11 +71,22 @@ test('GET /api/setup/*: 返回 405 + Allow: POST', async () => {
   assert.match(body.error, /POST \/api\/setup/);
 });
 
-test('GET /setup/*: 旧路径别名同样返回 405 + Allow: POST', async () => {
-  const ctx = makeEnv();
-  const res = await request(app, '/setup/anything', { method: 'GET' }, ctx);
-  assert.equal(res.status, 405);
-  assert.equal(res.headers.get('Allow'), 'POST');
+test('GET /setup: 落到 SPA 页面（200 + text/html），不再被 API 405 兜底', async () => {
+  const ctx = makeEnv({
+    ASSETS: {
+      fetch: async () =>
+        new Response('<!doctype html><html><body></body></html>', {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+    },
+  });
+  const res = await request(app, '/setup', { method: 'GET' }, ctx);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+  assert.doesNotMatch(
+    res.headers.get('content-type') ?? '',
+    /application\/json/,
+  );
 });
 
 // ─── POST /api/setup ──────────────────────────────────────────────────────────
@@ -155,24 +167,6 @@ test('POST /api/setup: 旧 X-Setup-Secret 头方式仍可用', async () => {
       headers: {
         'X-Setup-Secret': 'test-setup-secret',
         'cf-connecting-ip': '5.5.5.5',
-      },
-    },
-    ctx,
-  );
-  assert.equal(res.status, 200);
-  assert.ok(Array.isArray((await res.json()).migrations));
-});
-
-test('POST /setup: 旧路径别名 + X-Setup-Secret 头仍可用', async () => {
-  const ctx = makeEnv({ DB: new D1Mock(false) as unknown as Env['DB'] });
-  const res = await request(
-    app,
-    '/setup',
-    {
-      method: 'POST',
-      headers: {
-        'X-Setup-Secret': 'test-setup-secret',
-        'cf-connecting-ip': '5.5.5.6',
       },
     },
     ctx,

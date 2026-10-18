@@ -116,10 +116,9 @@ app.route('/api/analytics', analyticsRoutes);
 app.route('/api/admin', adminRoutes);
 
 // ─── Setup / migration endpoint ───────────────────────────────────────────────
-// Mounted at /api/setup to match the rest of the public API; /setup is kept as a
-// backward-compatible alias for callers that predate the /api prefix.
+// Mounted at /api/setup only. /setup is the public SPA page path (served by the
+// SPA fallback below); it is no longer an API alias.
 app.route('/api/setup', setupRoutes);
-app.route('/setup', setupRoutes);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }));

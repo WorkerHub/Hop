@@ -136,6 +136,8 @@ setup page, it does not disable the `POST` migration channel. When logged in as 
 migrations can also be run from the admin panel via `POST /api/admin/setup` — no setup
 secret needed, not IP rate-limited, and each run is written to the audit log.
 
+The initialization page itself is served by the SPA at `/setup` (not an API route).
+
 After deploying, the workflow first confirms through the Cloudflare API that the uploaded
 version serves 100% of production traffic, then probes the public URL. A `403` carrying
 `cf-mitigated: challenge` (e.g. Bot Fight Mode challenging the CI runner) only produces a
