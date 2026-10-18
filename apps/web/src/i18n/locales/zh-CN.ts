@@ -243,6 +243,15 @@ export const zhCN: Translations = {
     setupPageDisabled: '已关闭',
     runSetup: '检查并升级数据库',
     runSetupDesc: '执行待处理的数据库迁移，已应用的迁移将显示为「已跳过」。',
+    sendTestEmail: '发送测试邮件',
+    testEmailRecipient: '收件地址',
+    testEmailNote: '测试使用已保存的邮件设置，修改后请先保存。',
+    testEmailSuccess: '测试邮件发送成功',
+    testEmailErrorBadRequest:
+      '收件地址无效或邮件未配置，请检查地址并保存邮件设置。',
+    testEmailErrorTooManyRequests: '请求过于频繁，请在 {{seconds}} 秒后重试。',
+    testEmailErrorSendFailed: '测试邮件发送失败，请检查邮件服务商配置。',
+    testEmailErrorGeneric: '测试邮件发送失败，请重试。',
   },
   toast: {
     sessionExpired: '登录已过期，请重新登录。',

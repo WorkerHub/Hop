@@ -726,6 +726,15 @@ export const adminApi = {
   // Runs the same schema-migration routine as POST /api/setup, keyed to the
   // admin session (no setup secret required).
   runSetup: () => request<SetupResult>('/admin/setup', { method: 'POST' }),
+  // Sends a test email through the currently saved email settings. The backend
+  // reports success as `{ success: true }`; failures carry the status code the
+  // UI maps to a readable message (400 config/address, 429 with Retry-After,
+  // 502 send failure).
+  sendTestEmail: (to: string) =>
+    request<{ success: boolean }>('/admin/email/test', {
+      method: 'POST',
+      body: JSON.stringify({ to }),
+    }),
 };
 
 // Re-export WebAuthn types used by auth API
