@@ -1,28 +1,12 @@
 import type { SetupMigration } from '@/api/client';
 import { Badge } from '@/components/ui/badge';
-import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n';
-
-const STATUS_VARIANT = {
-  applied: 'success',
-  skipped: 'secondary',
-  error: 'destructive',
-} as const;
-
-function statusLabel(status: SetupMigration['status']): TranslationKey {
-  switch (status) {
-    case 'applied':
-      return 'setup.statusApplied';
-    case 'skipped':
-      return 'setup.statusSkipped';
-    case 'error':
-      return 'setup.statusError';
-  }
-}
+import { MIGRATION_STATUS_VARIANT, migrationStatusLabel } from '@/lib/setup';
 
 // Renders the migration list returned by POST /api/setup and POST /api/admin/setup.
 // Shared by the public /setup page and the admin "check & upgrade" action so the
-// two stay consistent.
+// two stay consistent. The status → label / variant mapping lives in
+// lib/setup.ts as pure functions so it can be unit-tested.
 export function SetupMigrationsResult({
   migrations,
 }: {
@@ -42,8 +26,8 @@ export function SetupMigrationsResult({
         <li key={m.name} className="rounded-md border p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-sm">{m.name}</span>
-            <Badge variant={STATUS_VARIANT[m.status]}>
-              {t(statusLabel(m.status))}
+            <Badge variant={MIGRATION_STATUS_VARIANT[m.status]}>
+              {t(migrationStatusLabel(m.status))}
             </Badge>
           </div>
           {m.status === 'error' && m.error && (
