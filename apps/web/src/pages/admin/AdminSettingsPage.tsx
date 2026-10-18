@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SetupResult } from '@/api/client';
 import { adminApi } from '@/api/client';
@@ -17,14 +17,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useAppConfig } from '@/contexts/AppConfigContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from '@/i18n';
 import type { SetupErrorMsg } from '@/lib/setup';
 import { formatSetupError, resolveSetupError } from '@/lib/setup';
+import type { TestEmailErrorMsg } from '@/lib/testEmail';
+import { formatTestEmailError, resolveTestEmailError } from '@/lib/testEmail';
 import { toastApiError } from '@/lib/toast';
 
 export default function AdminSettingsPage() {
   const { t } = useTranslation();
   const { reload: reloadAppConfig } = useAppConfig();
+  const { user } = useAuth();
   const { data, isLoading } = useQuery({
     queryKey: ['admin-settings'],
     queryFn: adminApi.getSettings,
@@ -55,6 +59,15 @@ export default function AdminSettingsPage() {
   // UI can show "leave blank to keep" and avoid submitting an empty value.
   const [resendKeyIsSet, setResendKeyIsSet] = useState(false);
   const [smtpPassIsSet, setSmtpPassIsSet] = useState(false);
+
+  // Send test email
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailError, setTestEmailError] =
+    useState<TestEmailErrorMsg | null>(null);
+  // Prefill the recipient with the current admin's email exactly once, so the
+  // admin's own edits are never overwritten when `user` (re)loads.
+  const testEmailPrefilled = useRef(false);
 
   // Setup page toggle + "check & upgrade database" action
   const [setupPageEnabled, setSetupPageEnabled] = useState(true);
@@ -89,6 +102,13 @@ export default function AdminSettingsPage() {
       setSetupPageEnabled(s.setup_page_enabled !== '0');
     }
   }, [data]);
+
+  useEffect(() => {
+    if (user?.email && !testEmailPrefilled.current) {
+      setTestEmailTo(user.email);
+      testEmailPrefilled.current = true;
+    }
+  }, [user?.email]);
 
   const handleRegistrationToggle = async (enabled: boolean) => {
     setRegistrationEnabled(enabled);
@@ -161,6 +181,21 @@ export default function AdminSettingsPage() {
       toastApiError(err, t('toast.requestFailed'), t);
     } finally {
       setSavingEmail(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    const to = testEmailTo.trim();
+    if (!to) return;
+    setSendingTestEmail(true);
+    setTestEmailError(null);
+    try {
+      await adminApi.sendTestEmail(to);
+      toast.success(t('admin.testEmailSuccess'));
+    } catch (err) {
+      setTestEmailError(resolveTestEmailError(err));
+    } finally {
+      setSendingTestEmail(false);
     }
   };
 
@@ -442,6 +477,41 @@ export default function AdminSettingsPage() {
             <Button type="submit" size="sm" loading={savingEmail}>
               {t('common.save')}
             </Button>
+
+            {/* Send test email (uses the saved settings) */}
+            <div className="space-y-3 rounded-md border p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="test-email-to">
+                  {t('admin.testEmailRecipient')}
+                </Label>
+                <Input
+                  id="test-email-to"
+                  type="email"
+                  value={testEmailTo}
+                  onChange={(e) => setTestEmailTo(e.target.value)}
+                  placeholder="you@example.com"
+                  className="max-w-xs"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('admin.testEmailNote')}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                loading={sendingTestEmail}
+                disabled={sendingTestEmail || testEmailTo.trim() === ''}
+                onClick={handleSendTestEmail}
+              >
+                {t('admin.sendTestEmail')}
+              </Button>
+              {testEmailError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {formatTestEmailError(testEmailError, t)}
+                </p>
+              )}
+            </div>
           </form>
         </CardContent>
       </Card>

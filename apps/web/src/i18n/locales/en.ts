@@ -255,6 +255,18 @@ export const en = {
     runSetup: 'Check & Upgrade Database',
     runSetupDesc:
       'Run pending database migrations. Already-applied migrations are reported as skipped.',
+    sendTestEmail: 'Send Test Email',
+    testEmailRecipient: 'Recipient Email',
+    testEmailNote:
+      'The test uses the saved email settings. Save your changes first to test them.',
+    testEmailSuccess: 'Test email sent successfully',
+    testEmailErrorBadRequest:
+      'Invalid recipient or email not configured. Check the address and save your email settings.',
+    testEmailErrorTooManyRequests:
+      'Too many requests. Try again in {{seconds}}s.',
+    testEmailErrorSendFailed:
+      'Failed to send the test email. Check your email provider settings.',
+    testEmailErrorGeneric: 'Failed to send the test email. Please try again.',
   },
   toast: {
     sessionExpired: 'Session expired. Please sign in again.',
