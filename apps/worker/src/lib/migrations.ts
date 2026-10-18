@@ -28,11 +28,20 @@ export function createMigrationsTableSql(prefix: string): string {
 // Returns migrations parameterised by the table prefix so setup works whether
 // TABLE_PREFIX is empty or set to a custom value.
 
-export function getMigrations(p: string): { name: string; sql: string }[] {
+export interface Migration {
+  name: string;
+  // wrangler migration file this corresponds to (migrations/<fileName>).
+  // The numeric prefix maps to the migration name via the schema_vN convention.
+  fileName: string;
+  sql: string;
+}
+
+export function getMigrations(p: string): Migration[] {
   const t = (name: string) => tbl(p, name);
   return [
     {
       name: 'schema_v1',
+      fileName: '0001_init.sql',
       sql: `
 CREATE TABLE IF NOT EXISTS ${t('users')} (
   id            TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -145,6 +154,7 @@ CREATE INDEX IF NOT EXISTS idx_totp_used_at ON ${t('totp_used')}(used_at);
       // BE-S3/S4: per-user token_version — bumping it revokes all of a user's
       // sessions (password change/reset, admin disable/demote).
       name: 'schema_v2',
+      fileName: '0002_token_version.sql',
       sql: `
 ALTER TABLE ${t('users')} ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
 `,

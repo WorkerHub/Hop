@@ -1,4 +1,5 @@
--- This is the canonical schema for a fresh deployment.
+-- DO NOT EDIT. Generated from src/lib/migrations.ts (getMigrations("")).
+-- Regenerate with: pnpm --filter @shortlink/worker generate:migrations
 
 CREATE TABLE users (
   id            TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -15,7 +16,6 @@ CREATE TABLE users (
   created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at    INTEGER NOT NULL DEFAULT (unixepoch())
 );
-
 CREATE TABLE passkeys (
   id            TEXT    PRIMARY KEY,
   user_id       TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -28,7 +28,6 @@ CREATE TABLE passkeys (
   last_used_at  INTEGER
 );
 CREATE INDEX idx_passkeys_user_id ON passkeys(user_id);
-
 CREATE TABLE links (
   id              TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   user_id         TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -44,7 +43,6 @@ CREATE TABLE links (
 CREATE INDEX idx_links_slug       ON links(slug);
 CREATE INDEX idx_links_user_id    ON links(user_id);
 CREATE INDEX idx_links_expires_at ON links(expires_at) WHERE expires_at IS NOT NULL;
-
 CREATE TABLE click_logs (
   id          TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   link_id     TEXT    NOT NULL REFERENCES links(id) ON DELETE CASCADE,
@@ -61,7 +59,6 @@ CREATE TABLE click_logs (
 CREATE INDEX idx_click_logs_link_id    ON click_logs(link_id);
 CREATE INDEX idx_click_logs_created_at ON click_logs(created_at);
 CREATE INDEX idx_click_logs_link_time  ON click_logs(link_id, created_at);
-
 CREATE TABLE verifications (
   id          TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   identifier  TEXT    NOT NULL,
@@ -73,7 +70,6 @@ CREATE TABLE verifications (
   created_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX idx_verifications_identifier ON verifications(identifier, type);
-
 CREATE TABLE settings (
   key        TEXT    PRIMARY KEY,
   value      TEXT    NOT NULL,
@@ -92,7 +88,6 @@ INSERT INTO settings (key, value) VALUES
   ('resend_api_key',       ''),
   ('email_from_domain',    ''),
   ('email_from_name',      '');
-
 CREATE TABLE audit_logs (
   id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   admin_id   TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -104,7 +99,6 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_audit_logs_admin_id   ON audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
 CREATE INDEX idx_audit_logs_target_id  ON audit_logs(target_id);
-
 CREATE TABLE totp_used (
   user_id TEXT NOT NULL,
   code    TEXT NOT NULL,

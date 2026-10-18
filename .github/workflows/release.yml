@@ -22,6 +22,54 @@ jobs:
     permissions:
       contents: write
     steps:
+      # CI-C9: validate the tag's format and origin before creating a release —
+      # a release must point at a real tag that is reachable from main.
+      - name: Validate tag
+        uses: actions/github-script@v9
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.TAG;
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
+              core.setFailed(`Invalid tag format "${tag}"; must match v<major>.<minor>.<patch>.`);
+              return;
+            }
+            let ref;
+            try {
+              ({ data: ref } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tag}`,
+              }));
+            } catch {
+              core.setFailed(`Tag "${tag}" does not exist in the repository.`);
+              return;
+            }
+            // Resolve annotated tags down to the commit they point at.
+            let sha = ref.object.sha;
+            if (ref.object.type === 'tag') {
+              const { data: tagObj } = await github.rest.git.getTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_sha: sha,
+              });
+              sha = tagObj.object.sha;
+            }
+            const { data: cmp } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: 'main',
+              head: sha,
+            });
+            if (cmp.status === 'ahead' || cmp.status === 'diverged') {
+              core.setFailed(
+                `Tag "${tag}" (${sha}) is not on main (status: ${cmp.status}); refusing to release.`,
+              );
+              return;
+            }
+            core.info(`Tag "${tag}" (${sha}) is on main (status: ${cmp.status}).`);
+
       - name: Create GitHub Release
         uses: actions/github-script@v9
         env:

@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     env:
       TAG: ${{ inputs.tag }}
 
@@ -45,6 +46,37 @@ jobs:
             exit 1
           fi
           echo "✅ Tag '$TAG' does not exist, proceeding..."
+
+      # CI-C9: never tag a commit whose CI did not pass — a tag feeds straight
+      # into release.yml, so it must only point at a verified main HEAD.
+      - name: Verify main CI passed
+        uses: actions/github-script@v9
+        env:
+          WORKFLOW_FILE: ci.yml
+        with:
+          script: |
+            const { stdout } = await exec.getExecOutput('git', ['rev-parse', 'HEAD']);
+            const sha = stdout.trim();
+            core.info(`Checking CI status for main@${sha}`);
+            // Filter by workflow file (not the repo-wide list) so this very tag
+            // workflow run is not mistaken for CI, and only accept a push run.
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: process.env.WORKFLOW_FILE,
+              head_sha: sha,
+              event: 'push',
+            });
+            const ciRun = data.workflow_runs.find(
+              (run) => run.status === 'completed' && run.conclusion === 'success',
+            );
+            if (!ciRun) {
+              core.setFailed(
+                `No successful CI (push) run found for main@${sha}; run CI on main before tagging.`,
+              );
+              return;
+            }
+            core.info(`CI for main@${sha} succeeded (run ${ciRun.id}).`);
 
       - name: Configure Git
         run: |

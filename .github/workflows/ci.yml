@@ -41,6 +41,11 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # CI-C1: unit tests are part of CI, which the deploy workflow gates on —
+      # so a regression in auth/links/redirect can no longer auto-deploy.
+      - name: Test
+        run: pnpm test
+
       # Deploy scripts: local D1 migration scenarios plus smoke/verify checks.
       # No Cloudflare credentials needed.
       - name: Shellcheck deploy scripts

@@ -13,7 +13,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        // CI-C9: the worker origin is configurable so local setups that run the
+        // worker on a different host/port don't have to edit this file.
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:8787',
         changeOrigin: true,
       },
     },
