@@ -9,6 +9,18 @@ interface EmailPayload {
   html: string;
 }
 
+// Thrown when the selected provider's required settings are missing. Callers
+// distinguish this from an upstream send failure via `instanceof` rather than
+// matching the message text — an SMTP server reply can itself contain the words
+// "not configured" (e.g. "554 Server not configured for mail"), which a
+// substring check would misclassify as a configuration error.
+export class EmailConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailConfigError';
+  }
+}
+
 // Read a setting from KV cache → DB, then populate the cache on a miss.
 async function getSetting(env: Env, key: string): Promise<string> {
   const cached = await getCachedSetting(env.LINKS_KV, key);
@@ -40,7 +52,7 @@ export async function sendEmail(
     ]);
 
     if (!host || !from) {
-      throw new Error(
+      throw new EmailConfigError(
         'SMTP is selected as email provider but smtp_host or smtp_from is not configured',
       );
     }
@@ -64,7 +76,7 @@ export async function sendEmail(
   ]);
 
   if (!apiKey || !fromDomain) {
-    throw new Error(
+    throw new EmailConfigError(
       'Resend is selected as email provider but resend_api_key or email_from_domain is not configured in admin settings',
     );
   }

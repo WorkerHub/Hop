@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { hashPassword } from '../lib/crypto.js';
 import { isUniqueConstraintError, tbl } from '../lib/db.js';
-import { sendEmail, testEmailHtml } from '../lib/email.js';
+import { EmailConfigError, sendEmail, testEmailHtml } from '../lib/email.js';
 import {
   checkTestEmailRateLimit,
   deleteCachedLink,
@@ -559,11 +559,12 @@ admin.post('/email/test', async (c) => {
       html: testEmailHtml(appName),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '';
-    if (message.includes('not configured')) {
+    if (err instanceof EmailConfigError) {
       // Missing provider config — the message names the missing setting keys,
-      // never their values, so it is safe to surface verbatim.
-      return c.json({ error: message }, 400);
+      // never their values, so it is safe to surface verbatim. Match on the
+      // dedicated error type (not the message text) so an upstream SMTP reply
+      // that happens to contain "not configured" is still treated as a 502.
+      return c.json({ error: err.message }, 400);
     }
     // Upstream failure — log a redacted summary (never the error message, which
     // can echo SMTP/credential details) and return a generic 502.
