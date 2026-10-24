@@ -9,6 +9,8 @@ import { AppConfigProvider } from './contexts/AppConfigContext.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
 import { I18nProvider } from './i18n/index.tsx';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
