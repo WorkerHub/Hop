@@ -26,13 +26,18 @@ export default function DashboardLayout() {
     navigate('/login');
   };
 
-  const navLinkClass = (to: string) =>
-    cn(
-      'flex items-center gap-3 rounded-md px-3 py-2 text-body font-medium tracking-wide transition-colors duration-(--duration-fast) ease-(--ease-out)',
-      location.pathname.startsWith(to)
-        ? 'bg-accent font-semibold text-accent-foreground'
-        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-    );
+  const navLinkClass = (to: string) => {
+    const isActive = location.pathname.startsWith(to);
+    return {
+      className: cn(
+        'flex items-center gap-3 rounded-md px-3 py-2 text-body font-medium tracking-wide transition-colors duration-(--duration-fast) ease-(--ease-out)',
+        isActive
+          ? 'bg-accent font-semibold text-accent-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+      ),
+      'aria-current': isActive ? ('page' as const) : undefined,
+    };
+  };
 
   const sidebarContent = (
     <>
@@ -52,7 +57,7 @@ export default function DashboardLayout() {
             key={to}
             to={to}
             onClick={() => setMobileOpen(false)}
-            className={navLinkClass(to)}
+            {...navLinkClass(to)}
           >
             <Icon className="h-4 w-4" />
             {label}
@@ -91,13 +96,14 @@ export default function DashboardLayout() {
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 animate-backdrop-in md:hidden"
           onClick={() => setMobileOpen(false)}
-          aria-label="Close menu"
+          aria-label={t('common.closeMenu')}
         />
       )}
 
       <aside
+        aria-hidden={mobileOpen ? undefined : true}
         className={cn(
           'flex flex-col w-60 border-r bg-background',
           'fixed inset-y-0 left-0 z-50 transition-transform duration-(--duration-slow) ease-(--ease-out) md:relative md:z-auto md:translate-x-0',
@@ -112,6 +118,8 @@ export default function DashboardLayout() {
           <Button
             variant="ghost"
             size="icon"
+            aria-label={t('common.openMenu')}
+            aria-expanded={mobileOpen}
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />

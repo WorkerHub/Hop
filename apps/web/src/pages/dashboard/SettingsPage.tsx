@@ -39,7 +39,7 @@ export default function SettingsPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="max-w-2xl space-y-6 p-6">
+    <div className="max-w-2xl space-y-6 p-6 animate-enter">
       <div className="space-y-1">
         <h1 className="text-h1 font-bold tracking-tight">
           {t('settings.title')}

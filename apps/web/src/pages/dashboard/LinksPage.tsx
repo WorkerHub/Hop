@@ -62,7 +62,7 @@ export default function LinksPage() {
   });
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 animate-enter">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-h1 font-bold tracking-tight">
