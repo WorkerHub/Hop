@@ -21,6 +21,7 @@ export function LinkSlugCell({ slug }: { slug: string }) {
         <span className="text-primary">{slug}</span>
         <button
           type="button"
+          aria-label={t('common.copyLink')}
           onClick={() => {
             // FE-R5: clipboard access can be denied (permissions, insecure
             // context) — report it instead of leaving a rejected promise.
@@ -38,6 +39,7 @@ export function LinkSlugCell({ slug }: { slug: string }) {
 }
 
 export function LinkDestinationCell({ url }: { url: string }) {
+  const { t } = useTranslation();
   // FE-S2: Only render the URL as a clickable link when its protocol is http/https.
   return (
     <td className="px-4 py-3 max-w-xs">
@@ -48,7 +50,8 @@ export function LinkDestinationCell({ url }: { url: string }) {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t('common.openInNewTab')}
+            className="flex-shrink-0 text-muted-foreground transition-colors duration-(--duration-fast) ease-(--ease-out) hover:text-foreground"
           >
             <ExternalLink className="h-3 w-3" />
           </a>
@@ -114,22 +117,30 @@ export function LinkActionCell({
   onDelete: (id: string) => void;
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   return (
     <td className="px-4 py-3">
       <div className="flex items-center justify-end gap-1">
         <Button
           variant="ghost"
           size="icon"
+          aria-label={t('analytics.view')}
           onClick={() => navigate(`/dashboard/analytics?linkId=${link.id}`)}
         >
           <BarChart2 className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => onEdit(link)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('common.edit')}
+          onClick={() => onEdit(link)}
+        >
           <Pencil className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
+          aria-label={t('common.delete')}
           onClick={() => onDelete(link.id)}
           className="text-destructive hover:text-destructive"
         >

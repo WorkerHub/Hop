@@ -1,4 +1,6 @@
 import type * as React from 'react';
+import { useEffect, useRef } from 'react';
+import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 interface DialogProps {
@@ -8,16 +10,45 @@ interface DialogProps {
 }
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
+
+  // 可达性：Escape 关闭 + 打开时焦点移入弹窗
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    // 优先聚焦第一个可交互控件，否则聚焦弹窗容器本身
+    const content = contentRef.current;
+    const target =
+      content?.querySelector<HTMLElement>(
+        'input, select, textarea, button:not([data-dialog-backdrop])',
+      ) ?? content;
+    target?.focus();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onOpenChange]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <button
         type="button"
-        className="fixed inset-0 bg-black/50"
+        className="fixed inset-0 bg-black/50 animate-backdrop-in"
         onClick={() => onOpenChange(false)}
-        aria-label="Close dialog"
+        aria-label={t('common.closeDialog')}
+        data-dialog-backdrop
       />
-      <div className="relative z-50 w-full flex justify-center">{children}</div>
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        className="relative z-50 w-full flex justify-center outline-none"
+      >
+        {children}
+      </div>
     </div>
   );
 }

@@ -143,7 +143,7 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 animate-enter">
       <div className="space-y-1">
         <h1 className="text-h1 font-bold tracking-tight">
           {t('analytics.title')}
@@ -176,12 +176,12 @@ export default function AnalyticsPage() {
             </button>
           )}
           {showDropdown && (
-            <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border bg-popover shadow-md">
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border bg-popover shadow-md animate-dropdown-in">
               {searchResults?.links.map((link) => (
                 <button
                   type="button"
                   key={link.id}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-body transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-body transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:outline-none"
                   onClick={() => handleSelectLink(link.id, link.slug)}
                 >
                   <span className="font-mono text-primary">{link.slug}</span>
@@ -304,7 +304,13 @@ export default function AnalyticsPage() {
               <CardTitle>{t('analytics.clicksOverTime')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer
+                width="100%"
+                height={200}
+                // 可达性：recharts 容器默认无语义，补图形角色与名称
+                role="img"
+                aria-label={t('analytics.clicksOverTimeAria')}
+              >
                 <LineChart data={stats.timeline}>
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -332,7 +338,12 @@ export default function AnalyticsPage() {
                 <CardTitle>{t('analytics.devices')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={180}>
+                <ResponsiveContainer
+                  width="100%"
+                  height={180}
+                  role="img"
+                  aria-label={t('analytics.devicesAria')}
+                >
                   <PieChart>
                     <Pie
                       data={stats.devices}

@@ -90,6 +90,43 @@
     }
   }
 
+  /* 遮罩淡入（Dialog / 移动端抽屉 backdrop） */
+  --animate-backdrop-in: fade-in var(--duration-normal) var(--ease-out);
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* 页面/卡片入场（上移 4px + 淡入，transform/opacity only） */
+  --animate-enter: enter var(--duration-slow) var(--ease-out);
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* 下拉/Popover 入场（下拉方向微位移 + 淡入） */
+  --animate-dropdown-in: dropdown-in var(--duration-normal) var(--ease-out);
+  @keyframes dropdown-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   /* 2.10 圆角 */
   --radius: 0.5rem;
   --radius-sm: calc(var(--radius) - 4px);
@@ -218,6 +255,25 @@
   }
   body {
     @apply bg-background font-sans text-body text-foreground;
+  }
+
+  /* 自托管 sr-only：供 aria-label / 描述性辅助文本，不依赖 Tailwind 内置工具类 */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Toast（sonner）入场微回弹：覆盖默认时长/缓动为契约的 spring 档位 */
+  [data-sonner-toast][data-mounted='true'] {
+    animation-duration: var(--duration-slow);
+    animation-timing-function: var(--ease-spring);
   }
 
   /* prefers-reduced-motion：所有动画/过渡降级为无动画 */

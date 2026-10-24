@@ -47,7 +47,7 @@ export default function AdminLinksPage() {
   });
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 animate-enter">
       <div className="space-y-1">
         <h1 className="text-h1 font-bold tracking-tight">
           {t('admin.allLinks')}

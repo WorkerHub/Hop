@@ -25,22 +25,26 @@ export default function AdminLayout() {
         </span>
       </div>
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              'flex items-center gap-3 rounded-md px-3 py-2 text-body font-medium tracking-wide transition-colors duration-(--duration-fast) ease-(--ease-out)',
-              location.pathname === to
-                ? 'bg-accent font-semibold text-accent-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </Link>
-        ))}
+        {navItems.map(({ to, label, icon: Icon }) => {
+          const isActive = location.pathname === to;
+          return (
+            <Link
+              key={to}
+              to={to}
+              onClick={() => setMobileOpen(false)}
+              aria-current={isActive ? 'page' : undefined}
+              className={cn(
+                'flex items-center gap-3 rounded-md px-3 py-2 text-body font-medium tracking-wide transition-colors duration-(--duration-fast) ease-(--ease-out)',
+                isActive
+                  ? 'bg-accent font-semibold text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
       <div className="border-t p-3">
         <Link
@@ -60,9 +64,9 @@ export default function AdminLayout() {
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 animate-backdrop-in md:hidden"
           onClick={() => setMobileOpen(false)}
-          aria-label="Close menu"
+          aria-label={t('common.closeMenu')}
         />
       )}
 
@@ -81,6 +85,8 @@ export default function AdminLayout() {
           <Button
             variant="ghost"
             size="icon"
+            aria-label={t('common.openMenu')}
+            aria-expanded={mobileOpen}
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />

@@ -7,7 +7,7 @@ import App from './App.tsx';
 import { isRetryableError } from './api/client.ts';
 import { AppConfigProvider } from './contexts/AppConfigContext.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
-import { ThemeProvider } from './contexts/ThemeContext.tsx';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext.tsx';
 import { I18nProvider } from './i18n/index.tsx';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
@@ -26,6 +26,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppToaster() {
+  const { theme } = useTheme();
+  return <Toaster richColors position="top-right" theme={theme} />;
+}
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Failed to find the root element');
 ReactDOM.createRoot(rootElement).render(
@@ -37,7 +42,7 @@ ReactDOM.createRoot(rootElement).render(
             <AppConfigProvider>
               <AuthProvider>
                 <App />
-                <Toaster richColors position="top-right" />
+                <AppToaster />
               </AuthProvider>
             </AppConfigProvider>
           </QueryClientProvider>

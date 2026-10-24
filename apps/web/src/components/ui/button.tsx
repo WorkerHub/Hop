@@ -25,10 +25,11 @@ const variants = {
   link: 'text-primary underline-offset-4 hover:underline',
 };
 
+// 响应式走查：default 按钮高度为 40px，padding 与高度匹配保持重心
 const sizes = {
   default: 'h-10 px-4 py-2',
   sm: 'h-9 px-3 text-caption',
-  lg: 'h-11 px-8 text-body-lg',
+  lg: 'h-11 px-6 text-body-lg',
   icon: 'h-10 w-10',
 };
 
