@@ -103,7 +103,6 @@ export default function DashboardLayout() {
       )}
 
       <aside
-        aria-hidden={mobileOpen ? undefined : true}
         className={cn(
           'flex flex-col w-60 border-r bg-background',
           'fixed inset-y-0 left-0 z-50 transition-transform duration-(--duration-slow) ease-(--ease-out) md:relative md:z-auto md:translate-x-0',

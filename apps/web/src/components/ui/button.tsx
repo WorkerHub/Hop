@@ -25,7 +25,7 @@ const variants = {
   link: 'text-primary underline-offset-4 hover:underline',
 };
 
-// 响应式走查：lg 按钮高度收缩至 40px 后，padding 同样收缩保持重心
+// 响应式走查：default 按钮高度为 40px，padding 与高度匹配保持重心
 const sizes = {
   default: 'h-10 px-4 py-2',
   sm: 'h-9 px-3 text-caption',

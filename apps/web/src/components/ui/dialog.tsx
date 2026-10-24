@@ -1,5 +1,6 @@
 import type * as React from 'react';
 import { useEffect, useRef } from 'react';
+import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 interface DialogProps {
@@ -10,6 +11,7 @@ interface DialogProps {
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   // 可达性：Escape 关闭 + 打开时焦点移入弹窗
   useEffect(() => {
@@ -22,7 +24,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
     const content = contentRef.current;
     const target =
       content?.querySelector<HTMLElement>(
-        'input, select, textarea, button:not([aria-label="Close dialog"])',
+        'input, select, textarea, button:not([data-dialog-backdrop])',
       ) ?? content;
     target?.focus();
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -35,7 +37,8 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
         type="button"
         className="fixed inset-0 bg-black/50 animate-backdrop-in"
         onClick={() => onOpenChange(false)}
-        aria-label="Close dialog"
+        aria-label={t('common.closeDialog')}
+        data-dialog-backdrop
       />
       <div
         ref={contentRef}
