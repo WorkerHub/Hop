@@ -52,7 +52,10 @@ export function DialogTitle({
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h2 className={cn('text-h3 font-semibold tracking-tight', className)} {...props} />
+    <h2
+      className={cn('text-h3 font-semibold tracking-tight', className)}
+      {...props}
+    />
   );
 }
 

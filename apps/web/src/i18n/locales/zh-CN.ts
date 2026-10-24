@@ -84,6 +84,7 @@ export const zhCN: Translations = {
   },
   links: {
     title: '我的链接',
+    titleDesc: '创建并管理你的短链接。',
     createLink: '创建链接',
     shortLink: '短链接',
     destination: '目标地址',
@@ -112,6 +113,7 @@ export const zhCN: Translations = {
   },
   analytics: {
     title: '统计分析',
+    titleDesc: '查看你的链接流量洞察。',
     linkSearchPlaceholder: '按别名搜索...',
     allLinks: '所有链接',
     selectLink: '选择链接查看其统计数据',
@@ -134,6 +136,7 @@ export const zhCN: Translations = {
   },
   settings: {
     title: '账户设置',
+    titleDesc: '管理偏好设置与登录安全。',
     changePassword: '修改密码',
     currentPassword: '当前密码',
     newPassword: '新密码',
@@ -202,8 +205,11 @@ export const zhCN: Translations = {
   admin: {
     adminPanel: '管理面板',
     users: '用户',
+    usersDesc: '管理账户、角色与访问权限。',
     allLinks: '所有链接',
+    allLinksDesc: '全站所有用户的短链接。',
     globalSettings: '全局设置',
+    globalSettingsDesc: '实例级配置。',
     createUser: '创建用户',
     createUserTitle: '创建新用户',
     createUserDesc: '创建一个新的用户账户',

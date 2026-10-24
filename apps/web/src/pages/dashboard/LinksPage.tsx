@@ -62,17 +62,24 @@ export default function LinksPage() {
   });
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">{t('links.title')}</h1>
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-h1 font-bold tracking-tight">
+            {t('links.title')}
+          </h1>
+          <p className="text-body text-muted-foreground">
+            {t('links.titleDesc')}
+          </p>
+        </div>
         <Button onClick={() => setShowCreate(true)}>
           <Plus className="h-4 w-4" />
           {t('links.createLink')}
         </Button>
       </div>
 
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder={t('links.searchPlaceholder')}
           value={search}
@@ -85,38 +92,40 @@ export default function LinksPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-16 text-center text-body text-muted-foreground">
           {t('common.loading')}
         </div>
       ) : !data?.links.length ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-16 text-center text-body text-muted-foreground">
           {t('links.noLinks')}
         </div>
       ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full text-body">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium w-12">#</th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="w-12 px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
+                  #
+                </th>
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.shortLink')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.destination')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.clicks')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.expiry')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.status')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.created')}
                 </th>
-                <th className="px-4 py-3 text-right font-medium">
+                <th className="px-4 py-3 text-right text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.actions')}
                 </th>
               </tr>
@@ -125,14 +134,14 @@ export default function LinksPage() {
               {data.links.map((link) => (
                 <tr
                   key={link.id}
-                  className="border-b last:border-0 hover:bg-muted/20"
+                  className="border-b last:border-0 transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-muted/20"
                 >
-                  <td className="px-4 py-3 text-muted-foreground text-xs">
+                  <td className="px-4 py-3 text-micro text-muted-foreground">
                     {link.user_seq}
                   </td>
                   <LinkSlugCell slug={link.slug} />
                   <LinkDestinationCell url={link.destination_url} />
-                  <td className="px-4 py-3 text-muted-foreground">
+                  <td className="px-4 py-3 font-mono font-semibold tabular-nums">
                     {link.click_count ?? 0}
                   </td>
                   <LinkExpiryCell expiresAt={link.expires_at} />
@@ -156,8 +165,8 @@ export default function LinksPage() {
       )}
 
       {data && data.pagination.pages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span className="text-body text-muted-foreground">
             {t('links.totalLinks', { count: data.pagination.total })}
           </span>
           <div className="flex gap-2">
@@ -269,7 +278,7 @@ function CreateLinkDialog({
           <DialogTitle>{t('links.createTitle')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="url">{t('links.destinationUrl')}</Label>
             <Input
               id="url"
@@ -282,7 +291,7 @@ function CreateLinkDialog({
               required
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="slug">{t('links.customSlug')}</Label>
             <Input
               id="slug"
@@ -297,7 +306,7 @@ function CreateLinkDialog({
               }
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="title">{t('links.titleField')}</Label>
             <Input
               id="title"
@@ -317,10 +326,10 @@ function CreateLinkDialog({
                   key={opt}
                   type="button"
                   onClick={() => setExpiryOption(opt)}
-                  className={`px-3 py-1 rounded-md text-sm border transition-colors ${
+                  className={`rounded-md border px-3 py-1 text-caption transition-colors duration-(--duration-fast) ease-(--ease-out) ${
                     expiryOption === opt
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-input hover:bg-accent'
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-input hover:bg-accent hover:text-accent-foreground'
                   }`}
                 >
                   {opt === 'never'
@@ -412,7 +421,7 @@ export function EditLinkDialog({
           <DialogTitle>{t('links.editTitle')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('links.destinationUrl')}</Label>
             <Input
               type="url"
@@ -423,7 +432,7 @@ export function EditLinkDialog({
               required
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('links.shortLink')}</Label>
             <Input
               value={form.customSlug}
@@ -433,7 +442,7 @@ export function EditLinkDialog({
               required
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('links.titleField')}</Label>
             <Input
               value={form.title}
@@ -442,7 +451,7 @@ export function EditLinkDialog({
               }
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('links.expiryFieldLabel')}</Label>
             <Input
               type="datetime-local"
@@ -460,7 +469,7 @@ export function EditLinkDialog({
               onChange={(e) =>
                 setForm((f) => ({ ...f, isActive: e.target.checked }))
               }
-              className="h-4 w-4"
+              className="h-4 w-4 accent-primary"
             />
             <Label htmlFor="active">{t('links.activeLabel')}</Label>
           </div>

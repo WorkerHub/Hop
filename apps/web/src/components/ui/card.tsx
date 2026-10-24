@@ -34,10 +34,7 @@ export function CardTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn(
-        'text-h2 font-semibold tracking-tight',
-        className,
-      )}
+      className={cn('text-h2 font-semibold tracking-tight', className)}
       {...props}
     />
   );
@@ -48,7 +45,10 @@ export function CardDescription({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn('text-sm text-muted-foreground', className)} {...props} />
+    <p
+      className={cn('text-body text-muted-foreground', className)}
+      {...props}
+    />
   );
 }
 

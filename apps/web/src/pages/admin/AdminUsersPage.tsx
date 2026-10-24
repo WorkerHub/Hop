@@ -77,16 +77,23 @@ export default function AdminUsersPage() {
     id === updatePendingId || id === deletePendingId;
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">{t('admin.users')}</h1>
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-h1 font-bold tracking-tight">
+            {t('admin.users')}
+          </h1>
+          <p className="text-body text-muted-foreground">
+            {t('admin.usersDesc')}
+          </p>
+        </div>
         <Button onClick={() => setShowCreate(true)}>
           <UserPlus className="h-4 w-4" />
           {t('admin.createUser')}
         </Button>
       </div>
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder={t('admin.searchUsersPlaceholder')}
           value={search}
@@ -99,30 +106,30 @@ export default function AdminUsersPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-16 text-center text-body text-muted-foreground">
           {t('common.loading')}
         </div>
       ) : (
-        <div className="rounded-md border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full text-body">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.user')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('admin.role')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('admin.twoFA')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.status')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('admin.joined')}
                 </th>
-                <th className="px-4 py-3 text-right font-medium">
+                <th className="px-4 py-3 text-right text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.actions')}
                 </th>
               </tr>
@@ -131,11 +138,11 @@ export default function AdminUsersPage() {
               {data?.users.map((u) => (
                 <tr
                   key={u.id}
-                  className="border-b last:border-0 hover:bg-muted/20"
+                  className="border-b last:border-0 transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-muted/20"
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium">{u.username}</div>
-                    <div className="text-muted-foreground text-xs">
+                    <div className="text-caption text-muted-foreground">
                       {u.email}
                     </div>
                   </td>
@@ -149,7 +156,7 @@ export default function AdminUsersPage() {
                           payload: { role: e.target.value as 'admin' | 'user' },
                         })
                       }
-                      className="text-sm border rounded px-2 py-1 bg-background"
+                      className="flex h-9 rounded-md border border-input bg-background px-2 text-body shadow-xs transition-colors duration-(--duration-fast) ease-(--ease-out) focus-visible:outline-none focus-visible:shadow-(--shadow-focus) disabled:opacity-50"
                     >
                       <option value="user">{t('common.user')}</option>
                       <option value="admin">{t('common.admin')}</option>
@@ -158,19 +165,13 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       {u.totp_enabled ? (
-                        <Badge variant="secondary" className="text-xs">
-                          TOTP
-                        </Badge>
+                        <Badge variant="secondary">TOTP</Badge>
                       ) : null}
                       {u.passkey_enabled ? (
-                        <Badge variant="secondary" className="text-xs">
-                          Passkey
-                        </Badge>
+                        <Badge variant="secondary">Passkey</Badge>
                       ) : null}
                       {u.email_2fa_enabled ? (
-                        <Badge variant="secondary" className="text-xs">
-                          Email
-                        </Badge>
+                        <Badge variant="secondary">Email</Badge>
                       ) : null}
                     </div>
                   </td>
@@ -219,8 +220,8 @@ export default function AdminUsersPage() {
       )}
 
       {data && data.pagination.pages > 1 && (
-        <div className="flex justify-between items-center mt-4">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span className="text-body text-muted-foreground">
             {t('admin.totalUsers', { count: data.pagination.total })}
           </span>
           <div className="flex gap-2">
@@ -311,7 +312,7 @@ function CreateUserDialog({
           <DialogDescription>{t('admin.createUserDesc')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('auth.email')}</Label>
             <Input
               type="email"
@@ -323,7 +324,7 @@ function CreateUserDialog({
               autoComplete="off"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('auth.username')}</Label>
             <Input
               type="text"
@@ -335,7 +336,7 @@ function CreateUserDialog({
               autoComplete="off"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('auth.password')}</Label>
             <Input
               type="password"
@@ -348,7 +349,7 @@ function CreateUserDialog({
               minLength={8}
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('admin.role')}</Label>
             <select
               value={form.role}
@@ -358,7 +359,7 @@ function CreateUserDialog({
                   role: e.target.value as 'admin' | 'user',
                 }))
               }
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-body shadow-xs transition-all duration-(--duration-fast) ease-(--ease-out) focus-visible:outline-none focus-visible:shadow-(--shadow-focus)"
             >
               <option value="user">{t('common.user')}</option>
               <option value="admin">{t('common.admin')}</option>

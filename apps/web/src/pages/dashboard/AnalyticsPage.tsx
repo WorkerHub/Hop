@@ -24,12 +24,11 @@ import { SEARCH_DEBOUNCE_MS } from '@/lib/constants';
 import { isSafeUrl } from '@/lib/utils';
 
 const COLORS = [
-  '#6366f1',
-  '#22d3ee',
-  '#f59e0b',
-  '#10b981',
-  '#f43f5e',
-  '#a855f7',
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
 ];
 
 const DAY_OPTIONS = [7, 14, 30, 90] as const;
@@ -144,13 +143,20 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">{t('analytics.title')}</h1>
+    <div className="space-y-6 p-6">
+      <div className="space-y-1">
+        <h1 className="text-h1 font-bold tracking-tight">
+          {t('analytics.title')}
+        </h1>
+        <p className="text-body text-muted-foreground">
+          {t('analytics.titleDesc')}
+        </p>
+      </div>
 
       {/* Link selector + day picker */}
       <div className="flex gap-3 items-end flex-wrap">
         <div className="flex-1 min-w-48 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t('analytics.linkSearchPlaceholder')}
             value={slugSearch}
@@ -163,23 +169,23 @@ export default function AnalyticsPage() {
           {slugSearch && (
             <button
               type="button"
-              className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+              className="absolute right-2 top-3 text-muted-foreground transition-colors duration-(--duration-fast) ease-(--ease-out) hover:text-foreground"
               onClick={handleClearLink}
             >
               <X className="h-4 w-4" />
             </button>
           )}
           {showDropdown && (
-            <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md overflow-hidden">
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border bg-popover shadow-md">
               {searchResults?.links.map((link) => (
                 <button
                   type="button"
                   key={link.id}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-body transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-accent hover:text-accent-foreground"
                   onClick={() => handleSelectLink(link.id, link.slug)}
                 >
                   <span className="font-mono text-primary">{link.slug}</span>
-                  <span className="truncate text-muted-foreground text-xs">
+                  <span className="truncate text-caption text-muted-foreground">
                     {link.destination_url}
                   </span>
                 </button>
@@ -203,12 +209,12 @@ export default function AnalyticsPage() {
 
       {/* Header: show which mode we're in */}
       {!selectedLinkId && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           {t('analytics.allLinksStats')}
         </p>
       )}
       {selectedLinkId && selectedLinkData?.link && (
-        <div className="text-sm text-muted-foreground">
+        <div className="text-body text-muted-foreground">
           <span className="font-mono font-medium text-foreground">
             {selectedLinkData.link.slug}
           </span>
@@ -230,12 +236,14 @@ export default function AnalyticsPage() {
       )}
 
       {isLoading && (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-16 text-center text-body text-muted-foreground">
           {t('common.loading')}
         </div>
       )}
       {error && (
-        <div className="text-destructive">{t('analytics.failedToLoad')}</div>
+        <p className="text-body text-destructive" role="alert">
+          {t('analytics.failedToLoad')}
+        </p>
       )}
 
       {stats && (
@@ -264,16 +272,14 @@ export default function AnalyticsPage() {
           {!selectedLinkId && stats.topLinks && stats.topLinks.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t('analytics.topLinks')}
-                </CardTitle>
+                <CardTitle>{t('analytics.topLinks')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {stats.topLinks.map((l) => (
                     <div
                       key={l.id}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between text-body"
                     >
                       <button
                         type="button"
@@ -282,7 +288,7 @@ export default function AnalyticsPage() {
                       >
                         {l.slug}
                       </button>
-                      <span className="font-medium">
+                      <span className="font-mono font-semibold tabular-nums">
                         {l.clicks} {t('analytics.clicks')}
                       </span>
                     </div>
@@ -295,9 +301,7 @@ export default function AnalyticsPage() {
           {/* Timeline */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                {t('analytics.clicksOverTime')}
-              </CardTitle>
+              <CardTitle>{t('analytics.clicksOverTime')}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={200}>
@@ -312,7 +316,7 @@ export default function AnalyticsPage() {
                   <Line
                     type="monotone"
                     dataKey="clicks"
-                    stroke="#6366f1"
+                    stroke="hsl(var(--chart-1))"
                     strokeWidth={2}
                     dot={false}
                   />
@@ -325,9 +329,7 @@ export default function AnalyticsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t('analytics.devices')}
-                </CardTitle>
+                <CardTitle>{t('analytics.devices')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={180}>
@@ -361,23 +363,23 @@ export default function AnalyticsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t('analytics.topCountries')}
-                </CardTitle>
+                <CardTitle>{t('analytics.topCountries')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {stats.countries.slice(0, 8).map((c) => (
                     <div
                       key={c.country}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between text-body"
                     >
                       <span>{c.country}</span>
-                      <span className="font-medium">{c.clicks}</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {c.clicks}
+                      </span>
                     </div>
                   ))}
                   {stats.countries.length === 0 && (
-                    <p className="text-muted-foreground text-sm">
+                    <p className="text-body text-muted-foreground">
                       {t('analytics.noData')}
                     </p>
                   )}
@@ -390,19 +392,19 @@ export default function AnalyticsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t('analytics.browsers')}
-                </CardTitle>
+                <CardTitle>{t('analytics.browsers')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {stats.browsers.map((b) => (
                     <div
                       key={b.browser}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between text-body"
                     >
                       <span>{b.browser}</span>
-                      <span className="font-medium">{b.clicks}</span>
+                      <span className="font-mono font-semibold tabular-nums">
+                        {b.clicks}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -410,27 +412,25 @@ export default function AnalyticsPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t('analytics.topReferrers')}
-                </CardTitle>
+                <CardTitle>{t('analytics.topReferrers')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {stats.referrers.slice(0, 8).map((r) => (
                     <div
                       key={r.referer}
-                      className="flex items-center justify-between text-sm gap-2"
+                      className="flex items-center justify-between gap-2 text-body"
                     >
                       <span className="truncate text-muted-foreground">
                         {r.referer}
                       </span>
-                      <span className="font-medium flex-shrink-0">
+                      <span className="flex-shrink-0 font-mono font-semibold tabular-nums">
                         {r.clicks}
                       </span>
                     </div>
                   ))}
                   {stats.referrers.length === 0 && (
-                    <p className="text-muted-foreground text-sm">
+                    <p className="text-body text-muted-foreground">
                       {t('analytics.noReferrer')}
                     </p>
                   )}
@@ -442,9 +442,9 @@ export default function AnalyticsPage() {
       )}
 
       {!stats && !isLoading && !error && (
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+        <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
           <BarChart2 className="h-12 w-12 opacity-30" />
-          <p>{t('analytics.selectLink')}</p>
+          <p className="text-body">{t('analytics.selectLink')}</p>
         </div>
       )}
     </div>
@@ -455,8 +455,12 @@ function StatCard({ title, value }: { title: string; value: string | number }) {
   return (
     <Card>
       <CardContent className="pt-6">
-        <p className="text-sm text-muted-foreground">{title}</p>
-        <p className="text-2xl font-bold mt-1">{value}</p>
+        <p className="text-caption font-medium tracking-caps text-muted-foreground uppercase">
+          {title}
+        </p>
+        <p className="mt-1 font-mono text-h1 font-semibold leading-none tabular-nums">
+          {value}
+        </p>
       </CardContent>
     </Card>
   );

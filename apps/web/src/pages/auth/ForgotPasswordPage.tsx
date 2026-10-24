@@ -85,14 +85,12 @@ export default function ForgotPasswordPage() {
     return (
       <AuthCard>
         <CardHeader>
-          <CardTitle className="text-2xl">
-            {t('auth.newPasswordTitle')}
-          </CardTitle>
+          <CardTitle>{t('auth.newPasswordTitle')}</CardTitle>
           <CardDescription>{t('auth.newPasswordDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label>{t('settings.newPassword')}</Label>
               <Input
                 type="password"
@@ -102,11 +100,11 @@ export default function ForgotPasswordPage() {
                 minLength={8}
                 autoComplete="new-password"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {t('auth.passwordHint')}
               </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label>{t('settings.confirmPassword')}</Label>
               <Input
                 type="password"
@@ -130,19 +128,17 @@ export default function ForgotPasswordPage() {
     return (
       <AuthCard>
         <CardHeader>
-          <CardTitle className="text-2xl">
-            {t('auth.forgotPasswordTitle')}
-          </CardTitle>
+          <CardTitle>{t('auth.forgotPasswordTitle')}</CardTitle>
           <CardDescription>
             {t('auth.resetCodeSentTo', { email })}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-4">
+          <p className="text-caption text-muted-foreground mb-4">
             {t('auth.codeValidFor')}
           </p>
           <form onSubmit={handleCodeSubmit} className="space-y-4">
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label>{t('auth.resetCode')}</Label>
               <OtpInput
                 value={code}
@@ -155,14 +151,14 @@ export default function ForgotPasswordPage() {
               {t('auth.verifyCode')}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-body text-muted-foreground">
             <ResendCodeButton
               countdown={countdown}
               onResend={sendCode}
               loading={loading}
             />
           </p>
-          <p className="mt-2 text-center text-sm text-muted-foreground">
+          <p className="mt-2 text-center text-body text-muted-foreground">
             <Link to="/login" className="text-primary hover:underline">
               {t('auth.backToLogin')}
             </Link>
@@ -175,14 +171,12 @@ export default function ForgotPasswordPage() {
   return (
     <AuthCard>
       <CardHeader>
-        <CardTitle className="text-2xl">
-          {t('auth.forgotPasswordTitle')}
-        </CardTitle>
+        <CardTitle>{t('auth.forgotPasswordTitle')}</CardTitle>
         <CardDescription>{t('auth.forgotPasswordDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={sendCode} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('auth.email')}</Label>
             <Input
               type="email"
@@ -197,7 +191,7 @@ export default function ForgotPasswordPage() {
             {t('auth.sendResetCode')}
           </Button>
         </form>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
+        <p className="mt-4 text-center text-body text-muted-foreground">
           <Link to="/login" className="text-primary hover:underline">
             {t('auth.backToLogin')}
           </Link>

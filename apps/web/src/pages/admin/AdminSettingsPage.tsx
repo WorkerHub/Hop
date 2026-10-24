@@ -233,15 +233,20 @@ export default function AdminSettingsPage() {
     );
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t('admin.globalSettings')}</h1>
+    <div className="max-w-2xl space-y-6 p-6">
+      <div className="space-y-1">
+        <h1 className="text-h1 font-bold tracking-tight">
+          {t('admin.globalSettings')}
+        </h1>
+        <p className="text-body text-muted-foreground">
+          {t('admin.globalSettingsDesc')}
+        </p>
+      </div>
 
       {/* Registration toggle */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {t('admin.registrationToggle')}
-          </CardTitle>
+          <CardTitle>{t('admin.registrationToggle')}</CardTitle>
           <CardDescription>{t('admin.registrationDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -264,9 +269,7 @@ export default function AdminSettingsPage() {
       {/* Email verification toggle */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {t('admin.emailVerificationToggle')}
-          </CardTitle>
+          <CardTitle>{t('admin.emailVerificationToggle')}</CardTitle>
           <CardDescription>{t('admin.emailVerificationDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -291,7 +294,7 @@ export default function AdminSettingsPage() {
       {/* App name */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t('admin.appName')}</CardTitle>
+          <CardTitle>{t('admin.appName')}</CardTitle>
           <CardDescription>{t('admin.appNameDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -313,14 +316,12 @@ export default function AdminSettingsPage() {
       {/* Email provider */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {t('admin.emailProvider')}
-          </CardTitle>
+          <CardTitle>{t('admin.emailProvider')}</CardTitle>
           <CardDescription>{t('admin.emailProviderDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSaveEmailSettings} className="space-y-4">
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="email-provider">{t('admin.provider')}</Label>
               <div className="relative w-full max-w-xs">
                 <select
@@ -329,7 +330,7 @@ export default function AdminSettingsPage() {
                   onChange={(e) =>
                     setEmailProvider(e.target.value as 'resend' | 'smtp')
                   }
-                  className="flex h-9 w-full appearance-none rounded-md border border-input bg-background px-3 py-1 pr-10 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-10 text-body shadow-xs transition-all duration-(--duration-fast) ease-(--ease-out) focus-visible:outline-none focus-visible:shadow-(--shadow-focus)"
                 >
                   <option value="resend">Resend</option>
                   <option value="smtp">SMTP</option>
@@ -340,7 +341,7 @@ export default function AdminSettingsPage() {
 
             {emailProvider === 'resend' && (
               <div className="space-y-3 rounded-md border p-4">
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="resend-api-key">API Key</Label>
                   <Input
                     id="resend-api-key"
@@ -355,12 +356,12 @@ export default function AdminSettingsPage() {
                     autoComplete="new-password"
                   />
                   {resendKeyIsSet && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       An API key is configured. Leave blank to keep it
                       unchanged.
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-caption text-muted-foreground">
                     Get your API key from{' '}
                     <a
                       href="https://resend.com/api-keys"
@@ -371,12 +372,14 @@ export default function AdminSettingsPage() {
                       resend.com
                     </a>
                     . Stored in the database; alternatively set the{' '}
-                    <code className="text-xs">RESEND_API_KEY</code> Worker
-                    secret.
+                    <code className="font-mono text-caption">
+                      RESEND_API_KEY
+                    </code>{' '}
+                    Worker secret.
                   </p>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="email-from-name">Sender Name</Label>
                   <Input
                     id="email-from-name"
@@ -386,7 +389,7 @@ export default function AdminSettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="email-from-domain">Sender Domain</Label>
                   <Input
                     id="email-from-domain"
@@ -394,10 +397,12 @@ export default function AdminSettingsPage() {
                     onChange={(e) => setEmailFromDomain(e.target.value)}
                     placeholder="example.com"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-caption text-muted-foreground">
                     Emails will be sent from{' '}
-                    <code className="text-xs">noreply@&lt;domain&gt;</code>. The
-                    domain must be verified in your Resend account.
+                    <code className="font-mono text-caption">
+                      noreply@&lt;domain&gt;
+                    </code>
+                    . The domain must be verified in your Resend account.
                   </p>
                 </div>
               </div>
@@ -406,7 +411,7 @@ export default function AdminSettingsPage() {
             {emailProvider === 'smtp' && (
               <div className="space-y-3 rounded-md border p-4">
                 <div className="grid grid-cols-[1fr_120px] gap-3">
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <Label htmlFor="smtp-host">Host</Label>
                     <Input
                       id="smtp-host"
@@ -415,7 +420,7 @@ export default function AdminSettingsPage() {
                       placeholder="smtp.example.com"
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <Label htmlFor="smtp-port">Port</Label>
                     <Input
                       id="smtp-port"
@@ -429,7 +434,7 @@ export default function AdminSettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="smtp-from">From Address</Label>
                   <Input
                     id="smtp-from"
@@ -440,7 +445,7 @@ export default function AdminSettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="smtp-user">Username</Label>
                   <Input
                     id="smtp-user"
@@ -451,7 +456,7 @@ export default function AdminSettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label htmlFor="smtp-pass">Password</Label>
                   <Input
                     id="smtp-pass"
@@ -465,7 +470,7 @@ export default function AdminSettingsPage() {
                     type="password"
                     autoComplete="new-password"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-caption text-muted-foreground">
                     {smtpPassIsSet
                       ? 'A password is configured. Leave blank to keep it unchanged.'
                       : 'Credentials are stored in the database.'}
@@ -480,7 +485,7 @@ export default function AdminSettingsPage() {
 
             {/* Send test email (uses the saved settings) */}
             <div className="space-y-3 rounded-md border p-4">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="test-email-to">
                   {t('admin.testEmailRecipient')}
                 </Label>
@@ -493,7 +498,7 @@ export default function AdminSettingsPage() {
                   className="max-w-xs"
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {t('admin.testEmailNote')}
               </p>
               <Button
@@ -507,7 +512,7 @@ export default function AdminSettingsPage() {
                 {t('admin.sendTestEmail')}
               </Button>
               {testEmailError && (
-                <p className="text-sm text-destructive" role="alert">
+                <p className="text-body text-destructive" role="alert">
                   {formatTestEmailError(testEmailError, t)}
                 </p>
               )}
@@ -519,9 +524,7 @@ export default function AdminSettingsPage() {
       {/* Setup page toggle */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {t('admin.setupPageToggle')}
-          </CardTitle>
+          <CardTitle>{t('admin.setupPageToggle')}</CardTitle>
           <CardDescription>{t('admin.setupPageDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -546,7 +549,7 @@ export default function AdminSettingsPage() {
       {/* Check & upgrade database */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t('admin.runSetup')}</CardTitle>
+          <CardTitle>{t('admin.runSetup')}</CardTitle>
           <CardDescription>{t('admin.runSetupDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -559,14 +562,14 @@ export default function AdminSettingsPage() {
           </Button>
 
           {runSetupError && (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="text-body text-destructive" role="alert">
               {formatSetupError(runSetupError, t)}
             </p>
           )}
 
           {runSetupResult && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">
+              <p className="text-body font-medium">
                 {t('setup.migrationsTitle')}
               </p>
               <SetupMigrationsResult migrations={runSetupResult.migrations} />

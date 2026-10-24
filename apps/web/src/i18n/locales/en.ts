@@ -86,6 +86,7 @@ export const en = {
   },
   links: {
     title: 'My Links',
+    titleDesc: 'Create and manage your short links.',
     createLink: 'Create Link',
     shortLink: 'Short Link',
     destination: 'Destination',
@@ -115,6 +116,7 @@ export const en = {
   },
   analytics: {
     title: 'Analytics',
+    titleDesc: 'Traffic insights for your links.',
     linkSearchPlaceholder: 'Search by slug...',
     allLinks: 'All Links',
     selectLink: 'Select a link to view its analytics',
@@ -137,6 +139,7 @@ export const en = {
   },
   settings: {
     title: 'Account Settings',
+    titleDesc: 'Manage your preferences and sign-in security.',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
     newPassword: 'New Password',
@@ -209,8 +212,11 @@ export const en = {
   admin: {
     adminPanel: 'Admin Panel',
     users: 'Users',
+    usersDesc: 'Manage accounts, roles and access.',
     allLinks: 'All Links',
+    allLinksDesc: 'Every short link across all users.',
     globalSettings: 'Global Settings',
+    globalSettingsDesc: 'Instance-wide configuration.',
     createUser: 'Create User',
     createUserTitle: 'Create New User',
     createUserDesc: 'Create a new user account',
