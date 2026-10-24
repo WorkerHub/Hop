@@ -56,12 +56,12 @@ export default function LoginPage() {
   return (
     <AuthCard>
       <CardHeader>
-        <CardTitle className="text-2xl">{t('auth.signIn')}</CardTitle>
+        <CardTitle>{t('auth.signIn')}</CardTitle>
         <CardDescription>{t('auth.signInDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="email">{t('auth.email')}</Label>
             <Input
               id="email"
@@ -73,12 +73,12 @@ export default function LoginPage() {
               autoComplete="email"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">{t('auth.password')}</Label>
               <Link
                 to="/forgot-password"
-                className="text-xs text-primary hover:underline"
+                className="text-caption text-primary hover:underline"
               >
                 {t('auth.forgotPassword')}
               </Link>
@@ -100,7 +100,7 @@ export default function LoginPage() {
             the register link. */}
         {configLoadFailed && (
           <p
-            className="mt-4 text-center text-sm text-muted-foreground"
+            className="mt-4 text-center text-body text-muted-foreground"
             role="alert"
           >
             {t('auth.configLoadFailed')}{' '}
@@ -114,7 +114,7 @@ export default function LoginPage() {
           </p>
         )}
         {registrationEnabled && (
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-body text-muted-foreground">
             {t('auth.noAccount')}{' '}
             <Link to="/register" className="text-primary hover:underline">
               {t('auth.register')}

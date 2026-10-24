@@ -115,16 +115,16 @@ export default function RegisterPage() {
     return (
       <AuthCard>
         <CardHeader>
-          <CardTitle className="text-2xl">{t('auth.createAccount')}</CardTitle>
+          <CardTitle>{t('auth.createAccount')}</CardTitle>
         </CardHeader>
         <CardContent>
           {configLoading ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-body text-muted-foreground">
               {t('common.loading')}
             </p>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-destructive" role="alert">
+              <p className="text-body text-destructive" role="alert">
                 {t('auth.configLoadFailed')}
               </p>
               <Button
@@ -137,7 +137,7 @@ export default function RegisterPage() {
               </Button>
             </div>
           )}
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-body text-muted-foreground">
             <Link to="/login" className="text-primary hover:underline">
               {t('auth.backToLogin')}
             </Link>
@@ -151,19 +151,17 @@ export default function RegisterPage() {
     return (
       <AuthCard>
         <CardHeader>
-          <CardTitle className="text-2xl">
-            {t('auth.verifyEmailTitle')}
-          </CardTitle>
+          <CardTitle>{t('auth.verifyEmailTitle')}</CardTitle>
           <CardDescription>
             {t('auth.verifyEmailDesc', { email })}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-4">
+          <p className="text-caption text-muted-foreground mb-4">
             {t('auth.codeValidFor')}
           </p>
           <form onSubmit={handleVerify} className="space-y-4">
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label>{t('auth.verificationCode')}</Label>
               <OtpInput value={code} onChange={setCode} autoFocus />
             </div>
@@ -176,14 +174,14 @@ export default function RegisterPage() {
               {t('auth.verify')}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-body text-muted-foreground">
             <ResendCodeButton
               countdown={countdown}
               onResend={handleResend}
               loading={loading}
             />
           </p>
-          <p className="mt-2 text-center text-sm text-muted-foreground">
+          <p className="mt-2 text-center text-body text-muted-foreground">
             <Link to="/login" className="text-primary hover:underline">
               {t('auth.backToLogin')}
             </Link>
@@ -196,12 +194,12 @@ export default function RegisterPage() {
   return (
     <AuthCard>
       <CardHeader>
-        <CardTitle className="text-2xl">{t('auth.createAccount')}</CardTitle>
+        <CardTitle>{t('auth.createAccount')}</CardTitle>
         <CardDescription>{t('auth.createAccountDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="email">{t('auth.email')}</Label>
             <Input
               id="email"
@@ -213,7 +211,7 @@ export default function RegisterPage() {
               autoComplete="email"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="username">{t('auth.username')}</Label>
             <Input
               id="username"
@@ -225,7 +223,7 @@ export default function RegisterPage() {
               autoComplete="username"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="password">{t('auth.password')}</Label>
             <Input
               id="password"
@@ -236,7 +234,7 @@ export default function RegisterPage() {
               autoComplete="new-password"
               minLength={8}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t('auth.passwordHint')}
             </p>
           </div>
@@ -244,7 +242,7 @@ export default function RegisterPage() {
             {t('auth.createAccount')}
           </Button>
         </form>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
+        <p className="mt-4 text-center text-body text-muted-foreground">
           {t('auth.alreadyAccount')}{' '}
           <Link to="/login" className="text-primary hover:underline">
             {t('auth.signInLink')}

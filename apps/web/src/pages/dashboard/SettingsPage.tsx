@@ -39,8 +39,15 @@ export default function SettingsPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t('settings.title')}</h1>
+    <div className="max-w-2xl space-y-6 p-6">
+      <div className="space-y-1">
+        <h1 className="text-h1 font-bold tracking-tight">
+          {t('settings.title')}
+        </h1>
+        <p className="text-body text-muted-foreground">
+          {t('settings.titleDesc')}
+        </p>
+      </div>
       <PreferencesCard />
       <ChangePasswordCard />
       <TotpCard user={user} onUpdate={refreshUser} />
@@ -70,7 +77,7 @@ function PreferencesCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">{t('settings.preferences')}</CardTitle>
+        <CardTitle>{t('settings.preferences')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -81,10 +88,10 @@ function PreferencesCard() {
                 key={value}
                 type="button"
                 onClick={() => setLang(value)}
-                className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                className={`rounded-md border px-3 py-1.5 text-body transition-colors duration-(--duration-fast) ease-(--ease-out) ${
                   lang === value
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-input hover:bg-accent'
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-input hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
                 {label}
@@ -100,10 +107,10 @@ function PreferencesCard() {
                 key={value}
                 type="button"
                 onClick={() => setTheme(value)}
-                className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                className={`rounded-md border px-3 py-1.5 text-body transition-colors duration-(--duration-fast) ease-(--ease-out) ${
                   theme === value
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-input hover:bg-accent'
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-input hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
                 {label}
@@ -148,13 +155,11 @@ function ChangePasswordCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          {t('settings.changePassword')}
-        </CardTitle>
+        <CardTitle>{t('settings.changePassword')}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('settings.currentPassword')}</Label>
             <Input
               type="password"
@@ -166,7 +171,7 @@ function ChangePasswordCard() {
               autoComplete="current-password"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('settings.newPassword')}</Label>
             <Input
               type="password"
@@ -179,7 +184,7 @@ function ChangePasswordCard() {
               minLength={8}
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label>{t('settings.confirmPassword')}</Label>
             <Input
               type="password"
@@ -283,8 +288,8 @@ function TotpCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            <CardTitle className="text-base">{t('settings.totp')}</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <CardTitle>{t('settings.totp')}</CardTitle>
           </div>
           <Badge variant={enabled ? 'success' : 'secondary'}>
             {enabled ? t('settings.enabled') : t('settings.disabled')}
@@ -327,10 +332,10 @@ function TotpCard({
           </DialogHeader>
           {backupCodes.length > 0 ? (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-body text-muted-foreground">
                 {t('settings.totpEnabled')}
               </p>
-              <div className="bg-muted rounded-md p-3 font-mono text-sm grid grid-cols-2 gap-1">
+              <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-3 font-mono text-body">
                 {backupCodes.map((c) => (
                   <div key={c}>{c}</div>
                 ))}
@@ -347,7 +352,7 @@ function TotpCard({
             </div>
           ) : setupData ? (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-body text-muted-foreground">
                 {t('settings.scanQrCode')}
               </p>
               <div className="flex justify-center bg-white rounded-md p-3">
@@ -359,12 +364,12 @@ function TotpCard({
                     height={200}
                   />
                 ) : (
-                  <p className="text-xs font-mono break-all text-black">
+                  <p className="break-all font-mono text-caption text-black">
                     {setupData.uri}
                   </p>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {t('settings.manualSecret')}{' '}
                 <span className="font-mono">{setupData.secret}</span>
               </p>
@@ -487,8 +492,8 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Key className="h-4 w-4" />
-          <CardTitle className="text-base">{t('settings.passkeys')}</CardTitle>
+          <Key className="h-4 w-4 text-muted-foreground" />
+          <CardTitle>{t('settings.passkeys')}</CardTitle>
         </div>
         <CardDescription>{t('settings.passkeysDesc')}</CardDescription>
       </CardHeader>
@@ -496,13 +501,13 @@ function PasskeyCard({ onUpdate }: { onUpdate: () => Promise<void> }) {
         {data?.passkeys.map((pk) => (
           <div
             key={pk.id}
-            className="flex items-center justify-between border rounded-md px-3 py-2 text-sm"
+            className="flex items-center justify-between rounded-md border px-3 py-2 text-body"
           >
             <div>
               <p className="font-medium">
                 {pk.name ?? t('settings.unnamedKey')}
               </p>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-caption text-muted-foreground">
                 {t('settings.added', { date: formatDate(pk.created_at) })}
               </p>
             </div>
@@ -656,10 +661,8 @@ function EmailOtpCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Mail className="h-4 w-4" />
-            <CardTitle className="text-base">
-              {t('settings.emailOtp')}
-            </CardTitle>
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <CardTitle>{t('settings.emailOtp')}</CardTitle>
           </div>
           <Badge variant={enabled ? 'success' : 'secondary'}>
             {enabled ? t('settings.enabled') : t('settings.disabled')}
@@ -700,7 +703,7 @@ function EmailOtpCard({
           </DialogHeader>
           {!codeSent ? (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-body text-muted-foreground">
                 {t('settings.emailOtpVerifyNote')}
               </p>
               <DialogFooter>
@@ -720,7 +723,7 @@ function EmailOtpCard({
                 autoFocus
                 placeholder={t('auth.sixDigitFromEmail')}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 <ResendCodeButton
                   countdown={countdown}
                   onResend={sendVerifyCode}

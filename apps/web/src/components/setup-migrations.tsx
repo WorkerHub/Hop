@@ -16,7 +16,9 @@ export function SetupMigrationsResult({
 
   if (migrations.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">{t('setup.noMigrations')}</p>
+      <p className="text-body text-muted-foreground">
+        {t('setup.noMigrations')}
+      </p>
     );
   }
 
@@ -25,13 +27,15 @@ export function SetupMigrationsResult({
       {migrations.map((m) => (
         <li key={m.name} className="rounded-md border p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-sm">{m.name}</span>
+            <span className="font-mono text-body">{m.name}</span>
             <Badge variant={MIGRATION_STATUS_VARIANT[m.status]}>
               {t(migrationStatusLabel(m.status))}
             </Badge>
           </div>
           {m.status === 'error' && m.error && (
-            <p className="mt-1 break-all text-xs text-destructive">{m.error}</p>
+            <p className="mt-1 break-all text-caption text-destructive">
+              {m.error}
+            </p>
           )}
         </li>
       ))}

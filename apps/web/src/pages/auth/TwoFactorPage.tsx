@@ -150,7 +150,7 @@ export default function TwoFactorPage() {
                   setCode('');
                   setOtpSent(false);
                 }}
-                className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                className={`px-3 py-2 text-body font-medium border-b-2 -mb-px transition-colors duration-(--duration-normal) ease-(--ease-in-out) ${
                   tab === t_
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -164,7 +164,7 @@ export default function TwoFactorPage() {
 
         {tab === 'totp' && (
           <form onSubmit={handleTotpVerify} className="space-y-4">
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label htmlFor="totp-code">{t('auth.sixDigitCode')}</Label>
               <OtpInput
                 id="totp-code"
@@ -196,7 +196,7 @@ export default function TwoFactorPage() {
               </Button>
             ) : (
               <form onSubmit={handleEmailVerify} className="space-y-4">
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <Label htmlFor="email-code">
                     {t('auth.sixDigitFromEmail')}
                   </Label>
@@ -230,7 +230,7 @@ export default function TwoFactorPage() {
 
         {tab === 'passkey' && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-body text-muted-foreground">
               {t('auth.passkeyDesc')}
             </p>
             <Button

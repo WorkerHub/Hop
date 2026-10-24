@@ -47,10 +47,17 @@ export default function AdminLinksPage() {
   });
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-6">{t('admin.allLinks')}</h1>
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+    <div className="space-y-6 p-6">
+      <div className="space-y-1">
+        <h1 className="text-h1 font-bold tracking-tight">
+          {t('admin.allLinks')}
+        </h1>
+        <p className="text-body text-muted-foreground">
+          {t('admin.allLinksDesc')}
+        </p>
+      </div>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder={t('admin.searchLinksPlaceholder')}
           value={search}
@@ -63,37 +70,39 @@ export default function AdminLinksPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-16 text-center text-body text-muted-foreground">
           {t('common.loading')}
         </div>
       ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border bg-card">
+          <table className="w-full text-body">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium w-12">#</th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="w-12 px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
+                  #
+                </th>
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.shortLink')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.destination')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.user')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.clicks')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.expiry')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.status')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.created')}
                 </th>
-                <th className="px-4 py-3 text-right font-medium">
+                <th className="px-4 py-3 text-right text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('common.actions')}
                 </th>
               </tr>
@@ -102,9 +111,9 @@ export default function AdminLinksPage() {
               {data?.links.map((link) => (
                 <tr
                   key={link.id}
-                  className="border-b last:border-0 hover:bg-muted/20"
+                  className="border-b last:border-0 transition-colors duration-(--duration-fast) ease-(--ease-out) hover:bg-muted/20"
                 >
-                  <td className="px-4 py-3 text-muted-foreground text-xs">
+                  <td className="px-4 py-3 text-micro text-muted-foreground">
                     {link.seq}
                   </td>
                   <LinkSlugCell slug={link.slug} />
@@ -112,7 +121,7 @@ export default function AdminLinksPage() {
                   <td className="px-4 py-3 text-muted-foreground">
                     {link.user_username}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
+                  <td className="px-4 py-3 font-mono font-semibold tabular-nums">
                     {link.click_count ?? 0}
                   </td>
                   <LinkExpiryCell expiresAt={link.expires_at} />
@@ -136,8 +145,8 @@ export default function AdminLinksPage() {
       )}
 
       {data && data.pagination.pages > 1 && (
-        <div className="flex justify-between items-center mt-4">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span className="text-body text-muted-foreground">
             {t('admin.totalLinks', { count: data.pagination.total })}
           </span>
           <div className="flex gap-2">

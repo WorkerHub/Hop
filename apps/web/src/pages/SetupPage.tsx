@@ -61,26 +61,28 @@ export default function SetupPage() {
   return (
     <AuthCard>
       <CardHeader>
-        <CardTitle className="text-2xl">{t('setup.title')}</CardTitle>
+        <CardTitle>{t('setup.title')}</CardTitle>
         <CardDescription>{t('setup.titleDesc')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {stateLoading ? (
-          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+          <p className="text-body text-muted-foreground">
+            {t('common.loading')}
+          </p>
         ) : stateError ? (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="text-body text-destructive" role="alert">
             {formatSetupError(stateError, t)}
           </p>
         ) : !enabled ? (
-          <div className="space-y-1">
-            <p className="text-sm font-medium">{t('setup.disabledTitle')}</p>
-            <p className="text-sm text-muted-foreground">
+          <div className="space-y-2">
+            <p className="text-body font-medium">{t('setup.disabledTitle')}</p>
+            <p className="text-body text-muted-foreground">
               {t('setup.disabledDesc')}
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label htmlFor="setup-secret">{t('setup.secretLabel')}</Label>
               <Input
                 id="setup-secret"
@@ -99,14 +101,16 @@ export default function SetupPage() {
         )}
 
         {runError && (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="text-body text-destructive" role="alert">
             {formatSetupError(runError, t)}
           </p>
         )}
 
         {result && (
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t('setup.migrationsTitle')}</p>
+            <p className="text-body font-medium">
+              {t('setup.migrationsTitle')}
+            </p>
             <SetupMigrationsResult migrations={result.migrations} />
           </div>
         )}
