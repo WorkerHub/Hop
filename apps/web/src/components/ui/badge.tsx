@@ -10,7 +10,7 @@ const variants = {
   secondary: 'bg-secondary text-secondary-foreground',
   destructive: 'bg-destructive text-destructive-foreground',
   outline: 'border border-input text-foreground',
-  success: 'bg-green-100 text-green-800',
+  success: 'bg-success text-success-foreground',
 };
 
 export function Badge({
@@ -21,7 +21,7 @@ export function Badge({
   return (
     <div
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors',
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-caption font-semibold transition-colors duration-(--duration-fast) ease-(--ease-out)',
         variants[variant],
         className,
       )}

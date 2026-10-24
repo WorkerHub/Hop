@@ -30,7 +30,7 @@ export function DialogContent({
   return (
     <div
       className={cn(
-        'bg-background rounded-lg shadow-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto',
+        'bg-background rounded-lg border shadow-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto animate-dialog-in',
         className,
       )}
       {...props}
@@ -51,7 +51,9 @@ export function DialogTitle({
   className,
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn('text-lg font-semibold', className)} {...props} />;
+  return (
+    <h2 className={cn('text-h3 font-semibold tracking-tight', className)} {...props} />
+  );
 }
 
 export function DialogDescription({
@@ -60,7 +62,7 @@ export function DialogDescription({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      className={cn('text-sm text-muted-foreground mt-1', className)}
+      className={cn('text-body text-muted-foreground mt-1', className)}
       {...props}
     />
   );
