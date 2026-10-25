@@ -125,28 +125,22 @@ jobs:
           TABLE_PREFIX: ${{ steps.prefix.outputs.table_prefix }}
         run: bash ../../.github/scripts/d1-prefixed-migrations.sh
 
-      # Fail-closed: refuse to deploy if any of the three runtime secrets is
-      # missing or empty, so an empty value can never overwrite a live
-      # Cloudflare Secret. The JSON lives only in $RUNNER_TEMP (mode 600) and
-      # is never written to the repository workspace.
+      # Fail-closed: refuse to deploy if a required runtime secret is missing
+      # or empty, so an empty value can never overwrite a live Cloudflare
+      # Secret. The JSON lives only in $RUNNER_TEMP (mode 600) and is never
+      # written to the repository workspace.
       - name: Write secrets file
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
           "SETUP_SECRET": ${{ secrets.SETUP_SECRET }}
         run: |
           set -euo pipefail
-          check_secret() {
-            local value
-            value="$(printenv "$1" 2>/dev/null || true)"
-            if [ -z "$value" ]; then
-              echo "::error::GitHub Secret '$1' is empty or missing; aborting deploy (fail-closed)."
-              return 1
+          for name in JWT_SECRET SETUP_SECRET; do
+            if [ -z "$(printenv "$name" 2>/dev/null || true)" ]; then
+              echo "::error::GitHub Secret '$name' is empty or missing; aborting deploy (fail-closed)."
+              exit 1
             fi
-          }
-          check_secret JWT_SECRET
-          check_secret TOTP_ENCRYPTION_KEY
-          check_secret 'SETUP_SECRET'
+          done
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON -e '
             const fs = require("node:fs");
             const path = require("node:path");
@@ -155,7 +149,6 @@ jobs:
               file,
               JSON.stringify({
                 JWT_SECRET: process.env.JWT_SECRET,
-                TOTP_ENCRYPTION_KEY: process.env.TOTP_ENCRYPTION_KEY,
                 "SETUP_SECRET": process.env["SETUP_SECRET"],
               }, null, 2) + "\n",
               { mode: 0o600 },
