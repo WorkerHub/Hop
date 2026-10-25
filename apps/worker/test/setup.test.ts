@@ -127,6 +127,12 @@ test('POST /api/setup: 密钥错误返回 403', async () => {
 
 test('POST /api/setup: 库中已初始化在其他前缀下 → 409 中止并提示显式配置', async () => {
   const ctx = makeEnv({ TABLE_PREFIX: undefined });
+  // 无前缀 schema 已初始化（含 _schema_migrations 历史），未配置前缀解析为 sl。
+  ctx.db.exec(createMigrationsTableSql(''));
+  ctx.db
+    .prepare(`INSERT INTO ${migrationsTable('')} (name) VALUES (?)`)
+    .bind('schema_v1')
+    .run();
   const res = await request(
     app,
     '/api/setup',

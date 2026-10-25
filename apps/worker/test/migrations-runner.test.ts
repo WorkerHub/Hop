@@ -109,3 +109,41 @@ test('migrationsTable 与迁移 helper 共用前缀语义', () => {
   assert.equal(migrationsTable('sl'), '_sl_schema_migrations');
   assert.equal(migrationsTable('SL'), '_SL_schema_migrations');
 });
+
+// ─── 回归：共享库他表 + 三态边界（ONE-206 修复）─────────────────────────────
+
+test('回归：共享库他表 bare users + shortlink 已有前缀 → 增量放行不误杀', async () => {
+  const db = initializedDb('SL');
+  // 他应用留下的 bare users 表，不应触发防静默切换误判。
+  db.exec('CREATE TABLE users (id TEXT PRIMARY KEY);');
+  const result = await runMigrations({
+    DB: db as unknown as never,
+    TABLE_PREFIX: 'SL',
+  });
+  assert.equal(result.prefix, 'SL');
+  assert.deepEqual(
+    result.migrations.map((m) => m.status),
+    ['skipped', 'skipped'],
+  );
+});
+
+test('回归：共享库他表（ZETA_*/eNotify_*）+ 显式空前缀 → 不误判为前缀', async () => {
+  const db = new D1Mock(false);
+  // 仅他应用的前缀表，shortlink 自身无任何 schema；显式空前缀应放行。
+  db.exec(
+    'CREATE TABLE ZETA_links (id TEXT, slug TEXT);' +
+      'CREATE TABLE eNotify_settings (key TEXT, value TEXT);',
+  );
+  const result = await runMigrations({
+    DB: db as unknown as never,
+    TABLE_PREFIX: '',
+  });
+  assert.equal(result.prefix, '');
+  assert.deepEqual(
+    result.migrations.map((m) => [m.name, m.status]),
+    [
+      ['schema_v1', 'applied'],
+      ['schema_v2', 'applied'],
+    ],
+  );
+});

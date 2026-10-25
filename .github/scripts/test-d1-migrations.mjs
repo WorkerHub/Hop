@@ -81,13 +81,13 @@ migrations_dir = "migrations"
   };
   const foreignSnapshot = () =>
     query(`SELECT type,name,tbl_name,sql FROM sqlite_master
-      WHERE tbl_name IN ('eNotify_users','ZETA_users','ZETA_links') ORDER BY name;
-      SELECT * FROM eNotify_users ORDER BY id;
+      WHERE tbl_name IN ('users','ZETA_users','ZETA_links') ORDER BY name;
+      SELECT * FROM users ORDER BY id;
       SELECT * FROM ZETA_users ORDER BY id;
       SELECT * FROM ZETA_links ORDER BY id;`);
   const shared = () => {
-    query(`CREATE TABLE eNotify_users (id TEXT PRIMARY KEY, email TEXT);
-      INSERT INTO eNotify_users VALUES ('other-user', 'keep@example.com');
+    query(`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT);
+      INSERT INTO users VALUES ('other-user', 'keep@example.com');
       CREATE TABLE ZETA_users (id TEXT PRIMARY KEY);
       INSERT INTO ZETA_users VALUES ('zeta-user');
       CREATE TABLE ZETA_links (id TEXT, slug TEXT);
@@ -281,4 +281,29 @@ test('防静默切换：库中已有 prefixed schema + 显式空前缀 → 中�
     () => f.script('d1-prepare-migrations.sh', ''),
     (err) => /prefixed schema/.test(err.stdout ?? ''),
   );
+});
+
+// ─── 回归：共享库他表 + 三态边界（ONE-206 修复）─────────────────────────────
+
+test('回归：共享库他表 + shortlink 已有 SL 前缀 → 增量迁移放行，不误杀', (t) => {
+  const f = fixture(t);
+  const before = f.shared(); // 他应用：bare users + ZETA_*
+  f.setup('SL', ['schema_v1', 'schema_v2']);
+  assert.match(f.script('d1-prepare-migrations.sh', 'SL'), /prefixed/);
+  assert.match(
+    f.script('d1-prefixed-migrations.sh', 'SL'),
+    /Planned migrations: none/,
+  );
+  assert.deepEqual(f.foreignSnapshot(), before);
+});
+
+test('回归：共享库他表 + shortlink 显式空前缀 → 放行，不误判他表为前缀', (t) => {
+  const f = fixture(t);
+  // 仅他应用的前缀表，shortlink 自身无任何 schema。
+  f.query(`CREATE TABLE ZETA_users (id TEXT PRIMARY KEY);
+    INSERT INTO ZETA_users VALUES ('zeta-user');
+    CREATE TABLE ZETA_links (id TEXT, slug TEXT);
+    INSERT INTO ZETA_links VALUES ('zeta-link', 'keep');
+    CREATE TABLE eNotify_settings (key TEXT, value TEXT);`);
+  assert.match(f.script('d1-prepare-migrations.sh', ''), /Empty database/);
 });

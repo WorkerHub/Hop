@@ -87,10 +87,12 @@ elif [[ -n "$own_tables" ]]; then
   echo "::error::They may belong to another application or predate the migration history; refusing to migrate. Record the applied migrations in $history first."
   exit 1
 else
-  # Silent-switch guard: an unprefixed schema of this app already exists → abort
-  # rather than silently initialising a new prefixed schema.
-  if grep -qx users <<<"$tables" || grep -qx _schema_migrations <<<"$tables" || grep -qx d1_migrations <<<"$tables"; then
-    echo "::error::The database contains an unprefixed schema (users / _schema_migrations / d1_migrations), but TABLE_PREFIX resolves to '$prefix'. Refusing to initialise a new '$prefix'-prefixed schema. To keep the existing unprefixed schema, set TABLE_PREFIX='' (or TABLE_PREFIX=none in CI)."
+  # Silent-switch guard: an unprefixed schema of this app (history with schema_v1,
+  # or wrangler's d1_migrations) exists → abort rather than silently initialising
+  # a new prefixed schema. A bare `users` table alone is not a signal — the
+  # shared D1 database can carry other apps' tables.
+  if grep -qx d1_migrations <<<"$tables" || (grep -qx _schema_migrations <<<"$tables" && d1_query "SELECT name FROM _schema_migrations" | grep -qx schema_v1); then
+    echo "::error::The database contains an unprefixed schema (_schema_migrations / d1_migrations), but TABLE_PREFIX resolves to '$prefix'. Refusing to initialise a new '$prefix'-prefixed schema. To keep the existing unprefixed schema, set TABLE_PREFIX='' (or TABLE_PREFIX=none in CI)."
     exit 1
   fi
   applied=""

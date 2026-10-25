@@ -34,19 +34,46 @@ export class TablePrefixConflictError extends Error {
   }
 }
 
-// The tables this app owns (suffix after the prefix). Used to recognise an
-// already-initialised schema without touching other apps' tables in the shared
-// D1 database.
-const OWN_TABLE_SUFFIXES = [
-  'users',
-  'passkeys',
-  'links',
-  'click_logs',
-  'verifications',
-  'settings',
-  'audit_logs',
-  'totp_used',
-] as const;
+// Tables that are unique to this app across the shared D1 database. Other apps
+// sharing the database (ZETA_*, eNotify_*, …) have none of these three, so their
+// presence under one prefix marks a shortlink schema. Never used for
+// single-table matching.
+const SHORTLINK_UNIQUE_SUFFIXES = ['passkeys', 'links', 'totp_used'] as const;
+
+// Collects the prefixes under which a shortlink schema appears to be
+// initialised: either a prefixed migration-history table
+// (`_<prefix>_schema_migrations`) or the intersection of the shortlink-unique
+// tables under the same prefix.
+function detectPrefixedSchema(names: string[]): string[] {
+  const prefixes = new Set<string>();
+
+  for (const n of names) {
+    const m = /^_([A-Za-z0-9_]+)_schema_migrations$/.exec(n);
+    if (m !== null) prefixes.add(m[1] ?? '');
+  }
+
+  const byPrefix = new Map<string, Set<string>>();
+  for (const n of names) {
+    const m = /^([A-Za-z0-9_]+)_(passkeys|links|totp_used)$/.exec(n);
+    if (m === null) continue;
+    const prefix = m[1] ?? '';
+    const suffix = m[2] ?? '';
+    let suffixes = byPrefix.get(prefix);
+    if (suffixes === undefined) {
+      suffixes = new Set();
+      byPrefix.set(prefix, suffixes);
+    }
+    suffixes.add(suffix);
+  }
+  for (const [prefix, suffixes] of byPrefix) {
+    const unique = SHORTLINK_UNIQUE_SUFFIXES as readonly string[];
+    if (unique.every((s) => suffixes.has(s))) {
+      prefixes.add(prefix);
+    }
+  }
+
+  return [...prefixes];
+}
 
 // Returns a human-readable description of a conflicting already-initialised
 // schema, or null when the database is safe to migrate under `prefix`.
@@ -62,14 +89,31 @@ async function detectTablePrefixConflict(
   const has = (t: string) =>
     names.some((n) => n.toLowerCase() === t.toLowerCase());
 
+  // An unprefixed schema of this app: the legacy setup route records its
+  // history in `_schema_migrations`, and wrangler's unprefixed path in
+  // `d1_migrations`. A bare `users` table alone is NOT a signal — the shared
+  // D1 database can carry other apps' tables.
+  let hasUnprefixed = has('d1_migrations');
+  if (has('_schema_migrations')) {
+    const history = await db
+      .prepare('SELECT name FROM _schema_migrations')
+      .all<{ name: string }>();
+    hasUnprefixed =
+      hasUnprefixed || history.results.some((r) => r.name === 'schema_v1');
+  }
+
   if (prefix !== '') {
-    // Resolving to a prefixed schema, but an unprefixed schema of this app is
-    // already initialised (the setup route always records its history in
-    // `_schema_migrations`, and `users` is the first business table).
-    if (has('_schema_migrations') || has('users')) {
+    // Already initialised under this prefix → an incremental/idempotent
+    // migration, not a silent switch. Allow it.
+    if (has(migrationsTable(prefix))) {
+      return null;
+    }
+    // Current prefix not initialised, but an unprefixed schema of this app
+    // exists → switching would point at a new set of tables.
+    if (hasUnprefixed) {
       return (
         `the database already contains an unprefixed schema (` +
-        `users / _schema_migrations), but TABLE_PREFIX resolves to '${prefix}'. ` +
+        `_schema_migrations / d1_migrations), but TABLE_PREFIX resolves to '${prefix}'. ` +
         `Refusing to initialise a new '${prefix}'-prefixed schema. ` +
         `To keep the existing unprefixed schema, explicitly configure ` +
         `TABLE_PREFIX='' (or TABLE_PREFIX=none in CI).`
@@ -78,27 +122,12 @@ async function detectTablePrefixConflict(
     return null;
   }
 
-  // Resolving to no prefix, but a prefixed schema of this app is already
-  // initialised. Only this app's own table suffixes count, so other apps
-  // sharing the D1 database are left alone.
-  const prefixed = names.filter((n) => {
-    const m = /^([A-Za-z0-9_]+)_([A-Za-z0-9_]+)$/.exec(n);
-    return (
-      m !== null &&
-      (OWN_TABLE_SUFFIXES as readonly string[]).includes(m[2] ?? '')
-    );
-  });
-  const historyPrefixes = names
-    .map((n) => /^_([A-Za-z0-9_]+)_schema_migrations$/.exec(n))
-    .filter((m) => m !== null)
-    .map((m) => (m as RegExpExecArray)[1] ?? '');
-  const detected = [
-    ...new Set([
-      ...historyPrefixes,
-      ...prefixed.map((n) => /^([A-Za-z0-9_]+)_/.exec(n)?.[1] ?? ''),
-    ]),
-  ].filter((p) => p !== '');
-
+  // Resolving to no prefix: already-unprefixed is legal (incremental); a
+  // prefixed schema of this app is a switch and must abort.
+  if (hasUnprefixed) {
+    return null;
+  }
+  const detected = detectPrefixedSchema(names);
   if (detected.length > 0) {
     return (
       `the database already contains a prefixed schema ` +
