@@ -84,6 +84,8 @@ Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages 
 
 > `keep_vars = true` is set in `wrangler.toml`, so deployments will never overwrite these values.
 >
+> The four ordinary variables `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` are set via the **Cloudflare dashboard** only and are **not migrated** by CI; their values must **never change** — `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers, and changing them invalidates every user's passkeys.
+>
 > Email provider settings (Resend API key, SMTP credentials, etc.) are configured in the **admin UI** after first login — no Cloudflare dashboard config needed.
 
 ### 5. Build and deploy
