@@ -214,6 +214,7 @@ export const en = {
     errorTooManyRequests: 'Too many requests. Try again in {{seconds}}s.',
     errorServer: 'The server is not configured, or the migration failed.',
     errorNotFound: 'The backend has not provided this endpoint yet.',
+    errorConflict: 'Table prefix conflict: {{message}}',
     errorGeneric: 'Setup failed. Please try again.',
   },
   admin: {

@@ -67,6 +67,13 @@ export function resolveSetupError(error: unknown): SetupErrorMsg | null {
         return { key: 'setup.errorForbidden' };
       case 404:
         return { key: 'setup.errorNotFound' };
+      case 409:
+        // Table-prefix silent-switch conflict: pass the backend's actionable
+        // message through so the operator sees exactly which TABLE_PREFIX to set.
+        return {
+          key: 'setup.errorConflict',
+          params: { message: e.message ?? '' },
+        };
       case 429:
         return {
           key: 'setup.errorTooManyRequests',

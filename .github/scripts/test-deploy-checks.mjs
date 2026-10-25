@@ -155,3 +155,52 @@ esac
     }
   });
 }
+
+// ─── CI 三态解析（none 约定）─────────────────────────────────────────────────
+
+for (const scenario of [
+  { name: 'vars 未设 → 默认 sl', env: undefined, expected: 'sl' },
+  { name: 'vars 为空 → 默认 sl', env: '', expected: 'sl' },
+  { name: 'vars 为保留字 none → 空字符串', env: 'none', expected: '' },
+  { name: 'vars 为其他值 → 原样（含大小写）', env: 'SL', expected: 'SL' },
+]) {
+  test(`三态解析（none 约定）：${scenario.name}`, (t) => {
+    const f = fixture(t);
+    const env = { ...f.env };
+    if (scenario.env === undefined) {
+      delete env.TABLE_PREFIX;
+    } else {
+      env.TABLE_PREFIX = scenario.env;
+    }
+    const out = execFileSync(
+      'node',
+      [
+        '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
+        join(scripts, 'resolve-table-prefix.mjs'),
+      ],
+      { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    assert.equal(out, scenario.expected);
+  });
+}
+
+test('worker-table-prefix.sh：未设置绑定 → 默认 sl', (t) => {
+  const f = fixture(t);
+  writeFileSync(
+    join(f.dir, 'pnpm'),
+    `#!/bin/sh
+case "$*" in
+  'exec wrangler versions view v1 --json')
+    printf '%s\\n' '{"id":"v1","resources":{"bindings":[]}}' ;;
+  *) exit 99 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  const out = execFileSync(
+    'bash',
+    [join(scripts, 'worker-table-prefix.sh'), 'v1'],
+    { env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  assert.equal(out, 'sl');
+});

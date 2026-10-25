@@ -11,18 +11,20 @@
 #
 #   setup.ts migration `schema_vN`  <=>  migrations/NNNN_*.sql  (N zero-padded)
 #
-# Writes `mode=apply`, `mode=prefixed` or `mode=skip` to $GITHUB_OUTPUT
-# (stdout if unset).
-#   apply    — wrangler migrations can run safely
+# Writes `mode=apply` or `mode=prefixed` to $GITHUB_OUTPUT (stdout if unset).
+#   apply    — wrangler migrations can run safely (no prefix in use)
 #   prefixed — TABLE_PREFIX is in use; migrations/*.sql are not prefix-aware,
 #              so d1-prefixed-migrations.sh applies the setup-route migrations
-#   skip     — prefixed tables found but TABLE_PREFIX is not set here; the
-#              schema must keep being managed through the setup route
+#
+# Three-state TABLE_PREFIX (unset → 'sl', '' → no prefix, other → as-is) is
+# resolved by the deploy workflow before this script runs; a silent switch
+# (database already initialised under a different prefix) aborts with an error.
 #
 # D1_LOCATION=local runs the queries against the local D1 database instead of
 # the remote one (for testing this script).
 set -euo pipefail
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
 location="${D1_LOCATION:-remote}"
 if [[ "$location" != remote && "$location" != local ]]; then
@@ -30,14 +32,15 @@ if [[ "$location" != remote && "$location" != local ]]; then
   exit 1
 fi
 
-if [[ -n "${TABLE_PREFIX:-}" ]]; then
-  if ! [[ "$TABLE_PREFIX" =~ ^[A-Za-z0-9_]+$ ]]; then
-    echo "::error::TABLE_PREFIX '$TABLE_PREFIX' may only contain letters, digits and underscores."
-    exit 1
-  fi
-  echo "TABLE_PREFIX=$TABLE_PREFIX — prefixed setup-route migrations will be applied instead of wrangler's."
-  echo "mode=prefixed" >>"$out"
-  exit 0
+# Three-state resolution: the deploy workflow already resolves vars.TABLE_PREFIX
+# (none → '', unset/empty → 'sl') before calling this script. When invoked
+# directly with TABLE_PREFIX unset, resolve it to the project default.
+# `${TABLE_PREFIX+x}` is empty when unset and 'x' when set (even to ''), which
+# is portable across bash 3.x and 5.x.
+if [[ -n "${TABLE_PREFIX+x}" ]]; then
+  prefix="$TABLE_PREFIX"
+else
+  prefix="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON "$here/default-table-prefix.mjs")"
 fi
 
 d1_query() {
@@ -47,6 +50,48 @@ d1_query() {
 
 tables="$(d1_query "SELECT name FROM sqlite_master WHERE type = 'table'")"
 has_table() { grep -qx "$1" <<<"$tables"; }
+has_table_i() { grep -qixF "$1" <<<"$tables"; }
+
+# An unprefixed schema of this app: the legacy setup route records its history
+# in `_schema_migrations` (with schema_v1), and wrangler's unprefixed path in
+# `d1_migrations`. A bare `users` table alone is NOT a signal — the shared D1
+# database can carry other apps' tables.
+unprefixed=false
+if has_table _schema_migrations && d1_query "SELECT name FROM _schema_migrations" | grep -qx schema_v1; then
+  unprefixed=true
+fi
+if has_table d1_migrations; then
+  unprefixed=true
+fi
+
+if [[ -n "$prefix" ]]; then
+  if ! [[ "$prefix" =~ ^[A-Za-z0-9_]+$ ]]; then
+    echo "::error::TABLE_PREFIX '$prefix' may only contain letters, digits and underscores."
+    exit 1
+  fi
+  # Already initialised under this prefix → incremental/idempotent migration,
+  # not a silent switch. Allow it.
+  if has_table_i "_${prefix}_schema_migrations" || has_table_i "${prefix}_users"; then
+    echo "TABLE_PREFIX=$prefix — prefixed setup-route migrations will be applied instead of wrangler's."
+    echo "mode=prefixed" >>"$out"
+    exit 0
+  fi
+  # Current prefix not initialised, but an unprefixed schema of this app exists
+  # → switching would point at a new set of tables.
+  if [[ "$unprefixed" == true ]]; then
+    echo "::error::The database already contains an unprefixed schema (_schema_migrations / d1_migrations), but TABLE_PREFIX resolves to '$prefix'. Refusing to initialise a new '$prefix'-prefixed schema. To keep the existing unprefixed schema, set TABLE_PREFIX='' (or TABLE_PREFIX=none in CI)."
+    exit 1
+  fi
+  echo "TABLE_PREFIX=$prefix — prefixed setup-route migrations will be applied instead of wrangler's."
+  echo "mode=prefixed" >>"$out"
+  exit 0
+fi
+
+# Prefix resolves to empty (explicit no-prefix).
+if [[ "$unprefixed" != true ]] && grep -Eq '^_[A-Za-z0-9_]+_schema_migrations$' <<<"$tables"; then
+  echo "::error::The database already contains a prefixed schema, but TABLE_PREFIX resolves to an empty string (no prefix). Refusing to initialise an unprefixed schema. To keep the existing prefixed schema, configure TABLE_PREFIX to its current value."
+  exit 1
+fi
 
 if has_table d1_migrations; then
   echo "d1_migrations present — database is already tracked by wrangler."
@@ -55,11 +100,6 @@ if has_table d1_migrations; then
 fi
 
 if ! has_table users; then
-  if grep -Eq '^(_[A-Za-z0-9_]+_schema_migrations|[A-Za-z0-9_]+_users)$' <<<"$tables"; then
-    echo "::warning::Found prefixed tables but no unprefixed schema; looks like TABLE_PREFIX is in use. Set the TABLE_PREFIX variable on the production environment so deploys apply prefixed migrations. Skipping D1 migrations."
-    echo "mode=skip" >>"$out"
-    exit 0
-  fi
   echo "Empty database — wrangler will apply all migrations."
   echo "mode=apply" >>"$out"
   exit 0

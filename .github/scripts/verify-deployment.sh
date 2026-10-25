@@ -7,7 +7,7 @@
 # Run from apps/worker (needs wrangler.toml with real IDs injected).
 #
 # Env: WRANGLER_OUTPUT_FILE_PATH — the ND-JSON file `wrangler deploy` wrote
-#      TABLE_PREFIX              — GitHub variable (may be empty)
+#      TABLE_PREFIX              — resolved prefix ('' means explicit no prefix)
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,12 +41,12 @@ done
 
 live="$(bash "$here/worker-table-prefix.sh" "$version")"
 live="${live//[^A-Za-z0-9_]/}"
+# worker-table-prefix.sh already maps an unset Worker binding to the default
+# 'sl'; compare literally (case-sensitive) so e.g. production `SL` is never
+# folded into `sl` and reported as a false match.
 expected="${TABLE_PREFIX:-}"
-if [[ -n "$expected" && "$live" != "$expected" ]]; then
-  echo "::error::Deployed version uses TABLE_PREFIX='$live', but migrations were applied for '$expected'."
+if [[ "$live" != "$expected" ]]; then
+  echo "::error::Deployed version uses TABLE_PREFIX='$live', but migrations were applied for '${expected:-<none>}'."
   exit 1
-fi
-if [[ -z "$expected" && -n "$live" ]]; then
-  echo "::warning::The Worker uses TABLE_PREFIX=$live but the GitHub TABLE_PREFIX variable is unset; set it on the production environment so deploys apply schema migrations automatically."
 fi
 echo "TABLE_PREFIX: ${live:-<none>}"

@@ -149,6 +149,21 @@ describe('resolveSetupError', () => {
     });
   });
 
+  test('maps a 409 table-prefix conflict, passing through the backend message', () => {
+    assert.deepEqual(
+      resolveSetupError({
+        status: 409,
+        message: 'the database already contains an unprefixed schema',
+      }),
+      {
+        key: 'setup.errorConflict',
+        params: {
+          message: 'the database already contains an unprefixed schema',
+        },
+      },
+    );
+  });
+
   test('falls back to the generic key for unmatched errors', () => {
     assert.deepEqual(resolveSetupError(new Error('boom')), {
       key: 'setup.errorGeneric',

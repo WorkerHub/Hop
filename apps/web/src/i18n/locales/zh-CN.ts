@@ -207,6 +207,7 @@ export const zhCN: Translations = {
     errorTooManyRequests: '请求过于频繁，请在 {{seconds}} 秒后重试。',
     errorServer: '服务端未配置密钥，或迁移执行失败。',
     errorNotFound: '后端尚未提供该接口。',
+    errorConflict: '表前缀冲突：{{message}}',
     errorGeneric: '初始化失败，请重试。',
   },
   admin: {

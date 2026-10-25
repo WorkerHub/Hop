@@ -125,6 +125,29 @@ test('POST /api/setup: 密钥错误返回 403', async () => {
   assert.match((await res.json()).error, /Invalid setup secret/);
 });
 
+test('POST /api/setup: 库中已初始化在其他前缀下 → 409 中止并提示显式配置', async () => {
+  const ctx = makeEnv({ TABLE_PREFIX: undefined });
+  // 无前缀 schema 已初始化（含 _schema_migrations 历史），未配置前缀解析为 sl。
+  ctx.db.exec(createMigrationsTableSql(''));
+  ctx.db
+    .prepare(`INSERT INTO ${migrationsTable('')} (name) VALUES (?)`)
+    .bind('schema_v1')
+    .run();
+  const res = await request(
+    app,
+    '/api/setup',
+    json(
+      { secret: 'test-setup-secret' },
+      { 'cf-connecting-ip': '{{IP_prefix_conflict}}' },
+    ),
+    ctx,
+  );
+  assert.equal(res.status, 409);
+  const body = await res.json();
+  assert.match(body.error, /unprefixed schema/);
+  assert.match(body.error, /TABLE_PREFIX=''/);
+});
+
 test('POST /api/setup: SETUP_SECRET 未配置返回 500', async () => {
   const ctx = makeEnv({ SETUP_SECRET: '' });
   const res = await request(
