@@ -46,27 +46,33 @@
 | D1 SQL databases | `shortlink`（可自定义） |
 
 
-### 3. 添加 GitHub Actions 密钥
+### 3. 添加 GitHub Actions 密钥与变量
 
 在你的 GitHub 仓库中前往 **Settings → Secrets and variables → Actions** 
 
-添加Repository secrets：
+添加 Repository secrets（deploy 工作流读取；其中只有 `JWT_SECRET`、`SETUP_SECRET` 两项会经 CI 以 `--secrets-file` 上传为 Cloudflare Secret）：
 
 | 密钥 | 值 |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | 进入[User API Tokens](https://dash.cloudflare.com/profile/api-tokens)页面，使用 **Edit Cloudflare Workers** 模板创建的 API 令牌 |
+| `CLOUDFLARE_API_TOKEN` | 进入[User API Tokens](https://dash.cloudflare.com/profile/api-tokens)页面，使用 **Edit Cloudflare Workers** 模板创建的 API 令牌。需具备目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。 |
+| `JWT_SECRET` | 任意长度 ≥ 32 字符的随机字符串。CI 经 `--secrets-file` 上传为 Cloudflare Secret。 |
+| `SETUP_SECRET` | `openssl rand -hex 24`。CI 经 `--secrets-file` 上传为 Cloudflare Secret，用于 setup/迁移。 |
+
+> **存量部署迁移到 CI** — GitHub 中的 `JWT_SECRET`、`SETUP_SECRET` 值必须与 Worker 上**已有的** Cloudflare Secret **同值**：请填入现有值，切勿生成新值替代，否则 CI 会用不同值覆盖线上 Secret。
 
 
-添加Repository variables：
+添加 Repository variables（deploy 工作流读取）：
+
 | 变量 | 值 |
 |---|---|
 | `CLOUDFLARE_ACCOUNT_ID` | 你的账户 ID（可在 Cloudflare 控制台 URL 中找到） |
 | `KV_NAMESPACE_ID`| 上一步中的 WORKERS KV ID |
 | `D1_DATABASE_ID` | 上一步中的 D1 database ID |
-| `D1_DATABASE_NAME` | （按需配置）若上一步自定义配置了D1数据库名称，则须配置为对应名称，否则无须配置。 |
+| `D1_DATABASE_NAME` | （可选）仅当上一步自定义了 D1 数据库名称时才需配置为对应名称，否则无须配置。 |
+| `TABLE_PREFIX` | （可选）production 环境变量。CI 中保留字 `none` 表示显式无前缀。必须与 Worker 的同名明文变量一致（见第 4 步）。 |
+| `APP_URL` | production 环境变量，smoke test 使用，须指向生产 URL，并与 Worker 的 `APP_URL` 变量一致（见第 4 步）。 |
 
-
-部署工作流（`.github/workflows/deploy.yml`）在部署时通过 `sed` 将这些 ID 注入 `wrangler.toml`，因此 ID 不会提交到仓库。
+部署工作流（`.github/workflows/deploy.yml`）在部署时通过 `sed` 将这些资源 ID 注入 `wrangler.toml`，因此 ID 不会提交到仓库。
 
 ### 4. 配置变量和密钥
 
@@ -74,18 +80,18 @@
 
 | 名称 | 类型 | 必填 | 示例 / 说明 |
 |---|---|---|---|
-| `APP_URL` | Variable | 是 | `https://yourdomain.com` |
+| `APP_URL` | Variable | 是 | `https://yourdomain.com` — 须与 GitHub 中的 `APP_URL` 变量一致（第 3 步） |
 | `APP_NAME` | Variable | 是 | `ShortLink` — 默认应用名称，可在管理界面覆盖 |
 | `RP_ID` | Variable | 是 | `yourdomain.com` — WebAuthn 依赖方 ID（仅域名） |
 | `APP_ORIGIN` | Variable | 是 | `https://yourdomain.com` — WebAuthn 来源（完整 URL） |
-| `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `sl`（`sl_users`、`sl_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
-| `JWT_SECRET` | Secret | 是 | 任意长度 ≥ 32 字符的随机字符串 |
-| `TOTP_ENCRYPTION_KEY` | Secret | 是 | `openssl rand -hex 32` |
-| `SETUP_SECRET` | Secret | 是 | `openssl rand -hex 24` — 用于触发迁移 |
+| `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `sl`（`sl_users`、`sl_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
+| `TOTP_ENCRYPTION_KEY` | Secret | 是 | `openssl rand -hex 32` — 加密 TOTP 凭据，轮换会使已绑定的 TOTP 全部失效。这是**唯一**在 Cloudflare 控制台配置的 Secret，不经 CI。 |
 
 > `wrangler.toml` 中设置了 `keep_vars = true`，因此部署不会覆盖这些值。
 >
-> 四个普通变量 `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` 仅在 **Cloudflare 控制台** 设置，本次改动不迁移；其值**严禁变更**——`RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识，一旦变更将导致所有用户的通行密钥失效。
+> `JWT_SECRET` 与 `SETUP_SECRET` **不在此处配置** — 由 CI 从第 3 步添加的 GitHub Secret 上传。只有 `TOTP_ENCRYPTION_KEY` 仅存在于 Cloudflare 控制台、从不经 CI。
+>
+> 普通变量 `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` 仅在 **Cloudflare 控制台** 设置，不迁移；其值**严禁变更**——`RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识，一旦变更将导致所有用户的通行密钥失效。`APP_URL` 与 `TABLE_PREFIX` 同时作为 GitHub 变量（第 3 步）供 smoke test 与前缀解析读取，需与这里的 Worker 变量保持同值。
 >
 > 邮件提供商设置（Resend API 密钥、SMTP 凭据等）在首次登录后通过**管理界面**配置 — 无需在 Cloudflare 控制台中配置。
 
