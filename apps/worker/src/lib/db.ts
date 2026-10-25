@@ -1,11 +1,12 @@
-// Database table name helper — applies TABLE_PREFIX from env.
-// The prefix is sanitized (alphanumeric + underscore only) to prevent SQL issues.
-// TABLE_PREFIX is read-only at deploy time; changing it after initial setup requires
-// migrating data to the new table names.
+// Database table name helper — applies TABLE_PREFIX from env. The three-state
+// resolution and the default constant live in table-prefix.ts (single source of
+// truth); TABLE_PREFIX is read-only at deploy time, so changing it after initial
+// setup requires migrating data to the new table names.
+
+import { tbl as applyPrefix, resolveTablePrefix } from './table-prefix.js';
 
 export function tbl(env: { TABLE_PREFIX?: string }, name: string): string {
-  const prefix = (env.TABLE_PREFIX ?? '').replace(/[^a-zA-Z0-9_]/g, '');
-  return prefix ? `${prefix}_${name}` : name;
+  return applyPrefix(resolveTablePrefix(env.TABLE_PREFIX), name);
 }
 
 // BE-C3: True when a D1 error is a UNIQUE constraint violation. D1 surfaces the

@@ -9,7 +9,10 @@ import {
   getCachedSetting,
   setCachedSetting,
 } from '../lib/kv.js';
-import { runMigrations } from '../lib/migrations-runner.js';
+import {
+  runMigrations,
+  TablePrefixConflictError,
+} from '../lib/migrations-runner.js';
 import { parsePagination } from '../lib/params.js';
 import { requireAdmin } from '../middleware/auth.js';
 import type { Env, LinkRow, UserRow, Variables } from '../types.js';
@@ -615,7 +618,16 @@ admin.delete('/links/:id', async (c) => {
 // first-time setup; the initial setup still happens through POST /api/setup.
 admin.post('/setup', async (c) => {
   const adminId = c.get('userId');
-  const result = await runMigrations(c.env);
+
+  let result: Awaited<ReturnType<typeof runMigrations>>;
+  try {
+    result = await runMigrations(c.env);
+  } catch (err) {
+    if (err instanceof TablePrefixConflictError) {
+      return c.json({ error: err.message }, 409);
+    }
+    throw err;
+  }
 
   const applied = result.migrations.filter(
     (m) => m.status === 'applied',

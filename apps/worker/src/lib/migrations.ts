@@ -1,19 +1,19 @@
 // Schema migrations, parameterised by TABLE_PREFIX. Single source of truth for
 // both the HTTP setup route (routes/setup.ts) and the deploy workflow
 // (.github/scripts/d1-migrations.mjs loads this file with Node's built-in
-// TypeScript type stripping) — so keep it free of imports and of TS-only
-// runtime syntax (enums, namespaces, parameter properties).
+// TypeScript type stripping) — so keep it free of imports other than the
+// type-strippable table-prefix.ts, and of TS-only runtime syntax (enums,
+// namespaces, parameter properties).
 //
 // Migrations must stay additive (CREATE TABLE/INDEX IF NOT EXISTS, ALTER TABLE
 // ADD COLUMN, INSERT OR IGNORE): the deploy workflow runs them before the new
 // code goes live, and its guard rejects anything else.
 
-// ─── Table-prefix helper (mirrors src/lib/db.ts) ──────────────────────────────
+// ─── Table-prefix helper (single source: src/lib/table-prefix.ts) ────────────
 
-export function tbl(prefix: string, name: string): string {
-  const p = prefix.replace(/[^a-zA-Z0-9_]/g, '');
-  return p ? `${p}_${name}` : name;
-}
+import { DEFAULT_TABLE_PREFIX, tbl } from './table-prefix.ts';
+
+export { DEFAULT_TABLE_PREFIX, tbl };
 
 // Name of the table recording applied migrations, e.g. `_SL_schema_migrations`.
 export function migrationsTable(prefix: string): string {

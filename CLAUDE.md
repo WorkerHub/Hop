@@ -97,7 +97,8 @@ shortlink/
 │   │   │   │   └── auth.ts       # requireAuth and requireAdmin middleware (JWT verification)
 │   │   │   └── lib/
 │   │   │       ├── crypto.ts     # PBKDF2 password hash/verify; AES-256-GCM encrypt/decrypt TOTP
-│   │   │       ├── db.ts         # tbl() helper: applies TABLE_PREFIX to all table names
+│   │   │       ├── db.ts         # tbl(env, name) helper: applies the three-state TABLE_PREFIX to all table names
+│   │   │       ├── table-prefix.ts # DEFAULT_TABLE_PREFIX + three-state resolveTablePrefix() (single source)
 │   │   │       ├── jwt.ts        # issueTokenPair, verifyAccessToken, verifyRefreshToken
 │   │   │       ├── slug.ts       # generateSlug (rejection-sampling), isValidSlug, isReservedSlug, RESERVED_SLUGS
 │   │   │       ├── totp.ts       # TOTP generate/verify with otpauth library
@@ -228,7 +229,7 @@ All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true`
 | `APP_NAME` | Yes | Default app name (overridable in admin UI) |
 | `RP_ID` | Yes | WebAuthn relying party ID (domain only, no protocol) |
 | `APP_ORIGIN` | Yes | WebAuthn origin (full URL with protocol) |
-| `TABLE_PREFIX` | No | Prefix for all D1 table names (e.g. `sl` → `sl_users`, `sl_links`, …). Default: empty (no prefix). Must be configured **before** running the setup route — changing it after initial setup requires renaming all tables manually. Only alphanumeric and underscore characters are used; all others are stripped. |
+| `TABLE_PREFIX` | No | Three-state prefix for all D1 table names. Unset → default `sl` (`sl_users`, `sl_links`, …); a custom value → that value (case preserved, `[^a-zA-Z0-9_]` stripped); explicit empty string → no prefix (deployer accepts table-collision risk). Must be configured **before** running the setup route — changing it after initial setup requires renaming all tables manually. On GitHub Actions, `none` is the reserved word for the explicit empty string (unset/empty both become the default `sl`). A silent switch (database initialised under a different prefix) aborts setup/migrations with an error. |
 
 Email sender config and API keys are managed in the **admin UI settings**, not here.
 
@@ -245,7 +246,7 @@ Two files in `apps/worker/migrations/`:
 
 **HTTP setup route (production):**
 The public initialization page lives at `/setup` (an SPA route). `POST /api/setup` with a JSON body `{"secret": "<SETUP_SECRET>"}` runs migrations via the shared `lib/migrations-runner.ts` (`runMigrations`). Two migrations:
-- `schema_v1` — identical DDL as `0001_init.sql`, but parameterized by `TABLE_PREFIX` and tracked in `_schema_migrations` table
+- `schema_v1` — identical DDL as `0001_init.sql`, but parameterized by `TABLE_PREFIX` and tracked in `_<prefix>_schema_migrations` table
 - `schema_v2` — adds `token_version` to `users` (mirrors `0002_token_version.sql`)
 
 The legacy `X-Setup-Secret` header is still accepted when the body is empty. The endpoint is rate-limited to 3 attempts per IP per 10 minutes (counted before the secret check; a `429` carries a `Retry-After` header). `GET /api/setup/state` (public) reports `{ enabled }` from the `setup_page_enabled` setting (default enabled); `GET /api/setup/*` returns `405` pointing at the POST form. An admin can run the same migrations keylessly via `POST /api/admin/setup` (no IP rate limit; writes an audit log entry). `setup_page_enabled` only hides the setup page — it never disables the `POST` migration channel.

@@ -77,7 +77,7 @@ Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages 
 | `APP_NAME` | Variable | Yes | `ShortLink` — default app name, overridable in admin UI |
 | `RP_ID` | Variable | Yes | `yourdomain.com` — WebAuthn relying party ID (domain only) |
 | `APP_ORIGIN` | Variable | Yes | `https://yourdomain.com` — WebAuthn origin (full URL) |
-| `TABLE_PREFIX` | Variable | No | e.g. `sl` — prefixes all D1 table names (`sl_users`, `sl_links`, …). Must be set **before** running the setup route. Leave empty to use unprefixed names. |
+| `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `sl` (`sl_users`, `sl_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Set **before** first setup and never change it once data exists. |
 | `JWT_SECRET` | Secret | Yes | Any random string ≥ 32 chars |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | `openssl rand -hex 32` |
 | `SETUP_SECRET` | Secret | Yes | `openssl rand -hex 24` — used to trigger migrations |
@@ -100,6 +100,17 @@ set it applies the migrations from `apps/worker/src/lib/migrations.ts` (the same
 the setup route runs), skips those already recorded in `_<prefix>_schema_migrations`,
 and prints the planned migrations in the log. Migrations must stay backward compatible:
 only add tables, indexes or columns — never drop, rename or rewrite existing data.
+
+GitHub Actions cannot distinguish an unset `vars.TABLE_PREFIX` from an empty one, so
+the deploy workflow resolves it to the three runtime states: **unset or empty → `sl`**
+(the default), **`none` → explicit empty string** (no prefix), **anything else → as-is**.
+
+> **Upgrade warning** — a legacy deployment that never set a prefix used unprefixed
+> tables. If the resolved prefix differs from the prefix the database was initialised
+> under, setup and migrations **abort with an error** instead of silently switching to
+> a different (usually empty) set of tables. Configure `TABLE_PREFIX` to its previous
+> value (`TABLE_PREFIX=''`, or `TABLE_PREFIX=none` in CI, to keep unprefixed tables)
+> before upgrading.
 
 When using a prefix, set `TABLE_PREFIX` under the GitHub **production environment →
 Variables** to exactly the same value as the Worker's `TABLE_PREFIX` **plain-text
@@ -284,7 +295,7 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 | `APP_NAME` | Var | Yes | Default app name; overridable in admin UI |
 | `RP_ID` | Var | Yes | WebAuthn relying party ID (domain without protocol) |
 | `APP_ORIGIN` | Var | Yes | WebAuthn origin (full URL) |
-| `TABLE_PREFIX` | Var | No | Prefix for all D1 table names (e.g. `sl` → `sl_users`, `sl_links`, …). Set once before the first migration — changing it later requires manually renaming tables. Only alphanumeric and underscore characters are used. |
+| `TABLE_PREFIX` | Var | No | Three-state prefix for all D1 table names. Unset → default `sl` (`sl_users`, `sl_links`, …); custom value → that value (case preserved); explicit empty → no prefix. Set once before the first migration — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
 | `JWT_SECRET` | Secret | Yes | HS256 signing key, ≥ 32 chars |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | Hex string from `openssl rand -hex 32` |
 | `SETUP_SECRET` | Secret | Yes | Secret path for triggering DB migrations via HTTP |

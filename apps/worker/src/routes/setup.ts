@@ -2,7 +2,10 @@ import { Hono } from 'hono';
 import { constantTimeEqual } from '../lib/crypto.js';
 import { tbl } from '../lib/db.js';
 import { checkSetupRateLimit } from '../lib/kv.js';
-import { runMigrations } from '../lib/migrations-runner.js';
+import {
+  runMigrations,
+  TablePrefixConflictError,
+} from '../lib/migrations-runner.js';
 import type { Env, Variables } from '../types.js';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -101,7 +104,14 @@ app.post('/', async (c) => {
     return c.json({ error: 'Invalid setup secret.' }, 403);
   }
 
-  return c.json(await runMigrations(c.env));
+  try {
+    return c.json(await runMigrations(c.env));
+  } catch (err) {
+    if (err instanceof TablePrefixConflictError) {
+      return c.json({ error: err.message }, 409);
+    }
+    throw err;
+  }
 });
 
 export default app;

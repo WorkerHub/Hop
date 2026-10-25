@@ -81,13 +81,13 @@ migrations_dir = "migrations"
   };
   const foreignSnapshot = () =>
     query(`SELECT type,name,tbl_name,sql FROM sqlite_master
-      WHERE tbl_name IN ('users','ZETA_users','ZETA_links') ORDER BY name;
-      SELECT * FROM users ORDER BY id;
+      WHERE tbl_name IN ('eNotify_users','ZETA_users','ZETA_links') ORDER BY name;
+      SELECT * FROM eNotify_users ORDER BY id;
       SELECT * FROM ZETA_users ORDER BY id;
       SELECT * FROM ZETA_links ORDER BY id;`);
   const shared = () => {
-    query(`CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT);
-      INSERT INTO users VALUES ('other-user', 'keep@example.com');
+    query(`CREATE TABLE eNotify_users (id TEXT PRIMARY KEY, email TEXT);
+      INSERT INTO eNotify_users VALUES ('other-user', 'keep@example.com');
       CREATE TABLE ZETA_users (id TEXT PRIMARY KEY);
       INSERT INTO ZETA_users VALUES ('zeta-user');
       CREATE TABLE ZETA_links (id TEXT, slug TEXT);
@@ -261,4 +261,24 @@ test('已知限制：别的应用占用同名索引时，本应用索引会被�
     /Planned migrations: schema_v1 schema_v2/,
   );
   assert.throws(() => f.assertOwnIndexes('SL'), /Expected values/);
+});
+
+// ─── 防静默切换（部署侧）─────────────────────────────────────────────────────
+
+test('防静默切换：库中已有无前缀 schema + 解析为 sl → 中止并提示显式配置', (t) => {
+  const f = fixture(t);
+  f.setup('', ['schema_v1']);
+  assert.throws(
+    () => f.script('d1-prepare-migrations.sh', 'sl'),
+    (err) => /unprefixed schema/.test(err.stdout ?? ''),
+  );
+});
+
+test('防静默切换：库中已有 prefixed schema + 显式空前缀 → 中止并提示显式配置', (t) => {
+  const f = fixture(t);
+  f.setup('SL', ['schema_v1']);
+  assert.throws(
+    () => f.script('d1-prepare-migrations.sh', ''),
+    (err) => /prefixed schema/.test(err.stdout ?? ''),
+  );
 });
