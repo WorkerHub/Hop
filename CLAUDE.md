@@ -221,7 +221,7 @@ For local development, put secrets in `apps/worker/.dev.vars` (gitignored).
 
 ## wrangler.toml Variables
 
-All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true` prevents deployments from overwriting them.
+All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true` prevents deployments from overwriting them. The four ordinary variables `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` are set via the CF dashboard only and are **not migrated** by CI; their values must **never change** — `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers, and changing them invalidates every user's passkeys.
 
 | Var | Required | Description |
 |---|---|---|

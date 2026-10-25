@@ -1,0 +1,21 @@
+# Local development variables and secrets.
+# Copy this file to apps/worker/.dev.vars and fill in real values.
+# .dev.vars is gitignored — never commit real secrets.
+
+# ─── Ordinary variables ───────────────────────────────────────────────────────
+# Production values are set via the Cloudflare dashboard (Variables) and are
+# NOT migrated by CI. Their values must never change:
+# RP_ID / APP_ORIGIN are the WebAuthn passkey relying-party identifiers —
+# changing them invalidates every user's passkeys.
+APP_URL=
+APP_NAME=
+RP_ID=
+APP_ORIGIN=
+
+# ─── Runtime secrets ──────────────────────────────────────────────────────────
+# Production values live in Cloudflare Secrets (uploaded from GitHub Secrets by
+# the deploy workflow). Generate your own local values; do not reuse production
+# values.
+JWT_SECRET=
+TOTP_ENCRYPTION_KEY=
+SETUP_SECRET=

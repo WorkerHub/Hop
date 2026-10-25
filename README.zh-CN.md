@@ -85,6 +85,8 @@
 
 > `wrangler.toml` 中设置了 `keep_vars = true`，因此部署不会覆盖这些值。
 >
+> 四个普通变量 `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` 仅在 **Cloudflare 控制台** 设置，本次改动不迁移；其值**严禁变更**——`RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识，一旦变更将导致所有用户的通行密钥失效。
+>
 > 邮件提供商设置（Resend API 密钥、SMTP 凭据等）在首次登录后通过**管理界面**配置 — 无需在 Cloudflare 控制台中配置。
 
 
