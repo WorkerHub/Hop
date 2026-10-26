@@ -52,15 +52,36 @@ tables="$(d1_query "SELECT name FROM sqlite_master WHERE type = 'table'")"
 has_table() { grep -qx "$1" <<<"$tables"; }
 has_table_i() { grep -qixF "$1" <<<"$tables"; }
 
+# This app's Wrangler migration file names (apps/worker/migrations/*.sql),
+# enumerated on the spot so the list can never drift from the directory.
+app_migration_files="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON "$here/d1-migration-files.mjs")"
+
+# True when Wrangler's `d1_migrations` ledger records at least one of THIS app's
+# migration files. The table alone is no signal: it is a database-wide
+# singleton, so any other app on the shared D1 database that ever ran
+# `wrangler d1 migrations apply` leaves it behind with that app's file names.
+has_app_migration_history() {
+  has_table d1_migrations || return 1
+  local applied name
+  applied="$(d1_query "SELECT name FROM d1_migrations")"
+  while IFS= read -r name; do
+    if grep -qxF "$name" <<<"$applied"; then
+      return 0
+    fi
+  done <<<"$app_migration_files"
+  return 1
+}
+
 # An unprefixed schema of this app: the legacy setup route records its history
 # in `_schema_migrations` (with schema_v1), and wrangler's unprefixed path in
-# `d1_migrations`. A bare `users` table alone is NOT a signal — the shared D1
+# `d1_migrations` — but only when that ledger holds this app's own migration
+# files. A bare `users` table alone is NOT a signal either — the shared D1
 # database can carry other apps' tables.
 unprefixed=false
 if has_table _schema_migrations && d1_query "SELECT name FROM _schema_migrations" | grep -qx schema_v1; then
   unprefixed=true
 fi
-if has_table d1_migrations; then
+if has_app_migration_history; then
   unprefixed=true
 fi
 

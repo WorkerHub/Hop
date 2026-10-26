@@ -2,7 +2,13 @@
 // 在仓库根目录运行：node --test .github/scripts/test-d1-migrations.mjs
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -95,6 +101,20 @@ migrations_dir = "migrations"
       CREATE INDEX idx_ZETA_links_slug ON ZETA_links(slug);`);
     return foreignSnapshot();
   };
+  // Wrangler 自己的迁移账本：全库单例表，共享 D1 上任何应用跑过
+  // `wrangler d1 migrations apply` 都会留下它，并记下那家应用的文件名。表结构按
+  // Wrangler 实际建的来（id/name/applied_at）。
+  const wranglerHistory = (...names) => {
+    query(`CREATE TABLE d1_migrations (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT UNIQUE,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );${names
+      .map((n) => `INSERT INTO d1_migrations (name) VALUES ('${n}');`)
+      .join('')}`);
+  };
+  // prepare 脚本把 mode=… 写到 $GITHUB_OUTPUT，不看 stdout。
+  const outputs = () => readFileSync(join(cwd, 'outputs'), 'utf8');
   // SQLite 索引名全库唯一：若别的应用已占用同名索引，CREATE INDEX IF NOT EXISTS
   // 会静默跳过。逐个核对迁移声明的索引确实建在本应用的表上。
   const assertOwnIndexes = (prefix) => {
@@ -120,6 +140,8 @@ migrations_dir = "migrations"
     script,
     setup,
     shared,
+    wranglerHistory,
+    outputs,
     foreignSnapshot,
     assertOwnIndexes,
     env,
@@ -306,4 +328,56 @@ test('回归：共享库他表 + Hop 显式空前缀 → 放行，不误判他�
     INSERT INTO ZETA_links VALUES ('zeta-link', 'keep');
     CREATE TABLE eNotify_settings (key TEXT, value TEXT);`);
   assert.match(f.script('d1-prepare-migrations.sh', ''), /Empty database/);
+});
+
+// ─── 回归：d1_migrations 内容判定（ONE-478）────────────────────────────
+
+// d1_migrations 是全库单例表，只含别家文件名时不算本应用的无前缀信号：
+// SL 表全删后的从零重装必须能过，且不动共享库任何东西。
+test('回归：仅外来 d1_migrations（别家文件名）+ SL 表全删 → 放行从零重建', (t) => {
+  const f = fixture(t);
+  const before = f.shared(); // 他应用的表、索引与数据
+  f.wranglerHistory('0001_other_app.sql', '0002_other_app.sql');
+  const ledgerBefore = f.query(
+    'SELECT id, name, applied_at FROM d1_migrations ORDER BY id',
+  );
+  f.script('d1-prepare-migrations.sh', 'SL');
+  assert.match(f.outputs(), /mode=prefixed/);
+  assert.match(
+    f.script('d1-prefixed-migrations.sh', 'SL'),
+    /Planned migrations: schema_v1 schema_v2\n/,
+  );
+  assert.deepEqual(
+    f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
+    [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+  );
+  f.assertOwnIndexes('SL');
+  assert.deepEqual(f.foreignSnapshot(), before);
+  assert.deepEqual(
+    f.query('SELECT id, name, applied_at FROM d1_migrations ORDER BY id'),
+    ledgerBefore,
+  );
+});
+
+// 防修过头：本应用自己的迁移文件名命中时，真正的静默切换仍必须拒绝；
+// 部署侧两处同源守卫（prepare / prefixed 新装分支）口径一致。
+test('回归：d1_migrations 含本应用迁移文件名 + 非空前缀 → 仍拒绝', (t) => {
+  const f = fixture(t);
+  const before = f.shared();
+  f.wranglerHistory('0001_init.sql', '0002_token_version.sql');
+  assert.throws(
+    () => f.script('d1-prepare-migrations.sh', 'SL'),
+    (err) => /unprefixed schema/.test(err.stdout ?? ''),
+  );
+  assert.throws(
+    () => f.script('d1-prefixed-migrations.sh', 'SL'),
+    (err) => /Refusing to initialise/.test(err.stdout ?? ''),
+  );
+  assert.deepEqual(
+    f.query(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND (name GLOB 'SL_*' OR name GLOB '_SL_*')`,
+    )[0],
+    [],
+  );
+  assert.deepEqual(f.foreignSnapshot(), before);
 });

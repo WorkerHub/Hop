@@ -1,11 +1,15 @@
 // Silent-switch guard + three-state resolution for the shared migration runner
 // (ONE-203 / ONE-205).
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   createMigrationsTableSql,
   getMigrations,
   migrationsTable,
+  WRANGLER_MIGRATION_FILES,
 } from '../src/lib/migrations.ts';
 import {
   runMigrations,
@@ -25,6 +29,20 @@ function initializedDb(prefix: string): D1Mock {
       .run();
   }
   return db;
+}
+
+// Wrangler's own migration ledger as it appears on the shared D1 database: a
+// database-wide singleton table, left behind (with that app's file names) by
+// any other app that ran `wrangler d1 migrations apply` there.
+function wranglerHistory(db: D1Mock, names: string[]): void {
+  db.exec(`CREATE TABLE d1_migrations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT UNIQUE,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+  );`);
+  for (const name of names) {
+    db.prepare('INSERT INTO d1_migrations (name) VALUES (?)').bind(name).run();
+  }
 }
 
 test('runMigrations 返回实际生效前缀（未配置 → hop）', async () => {
@@ -146,4 +164,71 @@ test('回归：共享库他表（ZETA_*/eNotify_*）+ 显式空前缀 → 不误
       ['schema_v2', 'applied'],
     ],
   );
+});
+
+// ─── 回归：d1_migrations 内容判定（ONE-478）────────────────────────────────
+
+// d1_migrations 是全库单例表，只含别家文件名时不算本应用的无前缀信号：
+// 前缀表全删后的从零重装必须能过。
+test('回归：仅外来 d1_migrations（别家文件名）+ prefix=SL → 不误判为静默切换', async () => {
+  const db = new D1Mock(false);
+  wranglerHistory(db, ['0001_other_app.sql', '0002_other_app.sql']);
+  const result = await runMigrations({
+    DB: db as unknown as never,
+    TABLE_PREFIX: 'SL',
+  });
+  assert.equal(result.prefix, 'SL');
+  assert.deepEqual(
+    result.migrations.map((m) => [m.name, m.status]),
+    [
+      ['schema_v1', 'applied'],
+      ['schema_v2', 'applied'],
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT name FROM _SL_schema_migrations ORDER BY name')
+      .all<{ name: string }>()
+      .results.map((r) => r.name),
+    ['schema_v1', 'schema_v2'],
+  );
+});
+
+// 防修过头：本应用自己的迁移文件名命中时，真正的静默切换仍必须拒绝。
+test('回归：d1_migrations 含本应用迁移文件名 + prefix=SL → 仍抛 TablePrefixConflict', async () => {
+  const db = new D1Mock(false);
+  wranglerHistory(db, ['0001_other_app.sql', '0001_init.sql']);
+  await assert.rejects(
+    runMigrations({ DB: db as unknown as never, TABLE_PREFIX: 'SL' }),
+    (err: unknown) => {
+      assert.ok(err instanceof TablePrefixConflictError);
+      assert.match((err as Error).message, /unprefixed schema/);
+      return true;
+    },
+  );
+  // 被拒后不得写入任何 SL 表或账本。
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND (name GLOB 'SL_*' OR name GLOB '_SL_*')",
+      )
+      .all<{ name: string }>()
+      .results.map((r) => r.name),
+    [],
+  );
+});
+
+// 部署脚本侧以 apps/worker/migrations/ 目录枚举为真源、运行时以常量为真源，
+// 两者漂移即红（新增 Wrangler 迁移文件却漏同步常量时 CI 会挂）。
+test('WRANGLER_MIGRATION_FILES 与 migrations/ 目录实际文件集合相等', () => {
+  const migrationsDir = join(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    'migrations',
+  );
+  const onDisk = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  assert.ok(onDisk.length > 0);
+  assert.deepEqual([...WRANGLER_MIGRATION_FILES].sort(), onDisk);
 });
