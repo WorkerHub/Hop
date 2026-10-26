@@ -39,16 +39,6 @@ jobs:
       TURBO_TELEMETRY_DISABLED: "1"
       WRANGLER_SEND_METRICS: "false"
     steps:
-      - name: Mask resource IDs
-        env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
-          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          for v in D1_DATABASE_ID KV_NAMESPACE_ID CLOUDFLARE_ACCOUNT_ID; do
-            if [ -n "${!v}" ]; then echo "::add-mask::${!v}"; fi
-          done
-
       # Deploy exactly the commit CI verified, not whatever main points to now.
       - uses: actions/checkout@v6
         with:
@@ -67,10 +57,10 @@ jobs:
 
       - name: Inject resource IDs
         env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'shortlink' }}
-          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           check() {
             if ! [[ "${!1}" =~ $2 ]]; then
