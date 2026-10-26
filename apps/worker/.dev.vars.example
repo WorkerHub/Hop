@@ -2,13 +2,15 @@
 # Copy this file to apps/worker/.dev.vars and fill in real values.
 # .dev.vars is gitignored — never commit real secrets.
 
-# ─── Ordinary variables ───────────────────────────────────────────────────────
-# Production values are set via the Cloudflare dashboard (Variables) and are
-# NOT migrated by CI. Their values must never change:
-# RP_ID / APP_ORIGIN are the WebAuthn passkey relying-party identifiers —
-# changing them invalidates every user's passkeys.
+# ─── Ordinary variables (all optional) ────────────────────────────────────────
+# Leave these empty to derive them from the request URL: APP_URL/APP_ORIGIN from
+# the request origin, RP_ID from the request hostname. An explicit value always
+# wins. APP_NAME is gone — the app name is the admin UI setting `app_name`
+# (default "Hop").
+#
+# APP_ORIGIN is only needed for passkey testing locally: the page is served by
+# the Vite dev server (http://localhost:5173) while /api is proxied to :8787.
 APP_URL=
-APP_NAME=
 RP_ID=
 APP_ORIGIN=
 

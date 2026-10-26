@@ -221,14 +221,13 @@ For local development, put secrets in `apps/worker/.dev.vars` (gitignored).
 
 ## wrangler.toml Variables
 
-All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true` prevents deployments from overwriting them. The four ordinary variables `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` are set via the CF dashboard only and are **not migrated** by CI; their values must **never change** — `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers, and changing them invalidates every user's passkeys.
+All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true` prevents deployments from overwriting them. `APP_URL` / `RP_ID` / `APP_ORIGIN` are optional and read only through `src/lib/app-defaults.ts` — never directly via `env.*` in routes. Unset, they are derived from the request (origin / hostname); configured, they win. `APP_NAME` is **not** an env var: the app name comes from the admin setting `app_name` (default `Hop`). A configured `RP_ID` / `APP_ORIGIN` must **never change** — they are the WebAuthn relying-party identifiers, and changing them invalidates every user's passkeys.
 
 | Var | Required | Description |
 |---|---|---|
-| `APP_URL` | Yes | Canonical origin (`https://yourdomain.com`) |
-| `APP_NAME` | Yes | Default app name (overridable in admin UI) |
-| `RP_ID` | Yes | WebAuthn relying party ID (domain only, no protocol) |
-| `APP_ORIGIN` | Yes | WebAuthn origin (full URL with protocol) |
+| `APP_URL` | No | Canonical origin (`https://yourdomain.com`). Default: request origin — used for CORS, HSTS, the refresh cookie's `Secure` flag and the `/404` redirect. |
+| `RP_ID` | No | WebAuthn relying party ID (domain only, no protocol). Default: request hostname. |
+| `APP_ORIGIN` | No | WebAuthn origin (full URL with protocol). Default: request origin. |
 | `TABLE_PREFIX` | No | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); a custom value → that value (case preserved, `[^a-zA-Z0-9_]` stripped); explicit empty string → no prefix (deployer accepts table-collision risk). Must be configured **before** running the setup route — changing it after initial setup requires renaming all tables manually. On GitHub Actions, `none` is the reserved word for the explicit empty string (unset/empty both become the default `hop`). A silent switch (database initialised under a different prefix) aborts setup/migrations with an error. |
 
 Email sender config and API keys are managed in the **admin UI settings**, not here.

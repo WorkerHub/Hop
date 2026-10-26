@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { appUrl } from '../lib/app-defaults.js';
 import { tbl } from '../lib/db.js';
 import { getCachedLink, setCachedLink } from '../lib/kv.js';
 import { HSTS } from '../lib/security.js';
@@ -22,7 +23,7 @@ function redirectHeaders(
     'Cache-Control': 'no-store',
     'Referrer-Policy': 'no-referrer',
   };
-  // Same APP_URL normalization as securityHeaders/CORS: a leading/trailing
+  // Same appUrl(c) normalization as securityHeaders/CORS: a leading/trailing
   // space must not silently suppress HSTS here either.
   if (appUrl.trim().startsWith('https')) {
     headers['Strict-Transport-Security'] = HSTS;
@@ -32,6 +33,8 @@ function redirectHeaders(
 
 redirect.get('/:slug', async (c) => {
   const slug = c.req.param('slug');
+  // Resolved once: canonical base for the /404 fallback and for HSTS gating.
+  const base = appUrl(c);
 
   // ── 1. KV fast path ────────────────────────────────────────────────────────
   let linkData: CachedLink | null = await getCachedLink(c.env.LINKS_KV, slug);
@@ -49,7 +52,7 @@ redirect.get('/:slug', async (c) => {
     if (!row) {
       return new Response(null, {
         status: 302,
-        headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
+        headers: redirectHeaders(base, `${base}/404`),
       });
     }
 
@@ -71,14 +74,14 @@ redirect.get('/:slug', async (c) => {
   if (!linkData.isActive) {
     return new Response(null, {
       status: 302,
-      headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
+      headers: redirectHeaders(base, `${base}/404`),
     });
   }
 
   if (linkData.expiresAt !== null && linkData.expiresAt <= now) {
     return new Response(null, {
       status: 302,
-      headers: redirectHeaders(c.env.APP_URL, `${c.env.APP_URL}/404`),
+      headers: redirectHeaders(base, `${base}/404`),
     });
   }
 
@@ -111,7 +114,7 @@ redirect.get('/:slug', async (c) => {
   // ── 5. Redirect ────────────────────────────────────────────────────────────
   return new Response(null, {
     status: 302,
-    headers: redirectHeaders(c.env.APP_URL, linkData.url),
+    headers: redirectHeaders(base, linkData.url),
   });
 });
 

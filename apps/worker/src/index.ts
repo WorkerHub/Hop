@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { appName, appUrl } from './lib/app-defaults.js';
 import { tbl } from './lib/db.js';
 import { apiError } from './lib/errors.js';
 import { getCachedSetting, setCachedSetting } from './lib/kv.js';
@@ -39,9 +40,7 @@ app.onError((err, c) => {
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use('/api/*', async (c, next) => {
   await next();
-  for (const [k, v] of Object.entries(
-    securityHeaders(c.env.APP_URL, API_CSP),
-  )) {
+  for (const [k, v] of Object.entries(securityHeaders(appUrl(c), API_CSP))) {
     c.header(k, v);
   }
 });
@@ -50,10 +49,11 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', async (c, next) => {
   const handler = cors({
     origin: (origin) => {
-      // Trim APP_URL so a stray leading/trailing space in the variable doesn't
-      // make the allowed-origin list miss every real Origin (which is also why
-      // HSTS went missing in production).
-      const allowed = [c.env.APP_URL.trim()];
+      // appUrl(c) resolves APP_URL, falling back to this request's origin; trim
+      // so a stray leading/trailing space in the variable doesn't make the
+      // allowed-origin list miss every real Origin (which is also why HSTS went
+      // missing in production).
+      const allowed = [appUrl(c).trim()];
       // BE-S10: allow the Vite dev-server origins only when the Worker is reached
       // over plain http on a loopback host (i.e. wrangler dev). A deployed Worker
       // is served from a real hostname, so neither condition holds in production.
@@ -77,22 +77,10 @@ app.use('/api/*', async (c, next) => {
 
 // ─── Public config endpoint ───────────────────────────────────────────────────
 app.get('/api/config', async (c) => {
-  const [appNameCached, regCached] = await Promise.all([
-    getCachedSetting(c.env.LINKS_KV, 'app_name'),
+  const [name, regCached] = await Promise.all([
+    appName(c.env),
     getCachedSetting(c.env.LINKS_KV, 'registration_enabled'),
   ]);
-
-  let appName: string;
-  if (appNameCached !== null) {
-    appName = appNameCached;
-  } else {
-    const row = await c.env.DB.prepare(
-      `SELECT value FROM ${tbl(c.env, 'settings')} WHERE key = 'app_name'`,
-    ).first<{ value: string }>();
-    appName = row?.value ?? c.env.APP_NAME ?? 'Hop';
-    if (row?.value)
-      await setCachedSetting(c.env.LINKS_KV, 'app_name', row.value);
-  }
 
   let registrationEnabled: boolean;
   if (regCached !== null) {
@@ -106,7 +94,7 @@ app.get('/api/config', async (c) => {
     registrationEnabled = val === 'true';
   }
 
-  return c.json({ appName, registrationEnabled });
+  return c.json({ appName: name, registrationEnabled });
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
@@ -161,7 +149,7 @@ app.all('*', async (c) => {
     ? crypto.randomUUID()
     : undefined;
   for (const [k, v] of Object.entries(
-    securityHeaders(c.env.APP_URL, spaCsp(nonce)),
+    securityHeaders(appUrl(c), spaCsp(nonce)),
   )) {
     headers.set(k, v);
   }

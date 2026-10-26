@@ -36,9 +36,10 @@ export function securityHeaders(
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Content-Security-Policy': csp,
   };
-  // Normalize APP_URL before checking its scheme: a stray leading/trailing space
-  // would otherwise silently suppress HSTS (and break CORS origin matching) even
-  // though the variable is "correct" apart from the whitespace.
+  // Normalize the resolved app URL (appUrl(c)) before checking its scheme: a
+  // stray leading/trailing space would otherwise silently suppress HSTS (and
+  // break CORS origin matching) even though the variable is "correct" apart
+  // from the whitespace.
   if (appUrl.trim().startsWith('https')) {
     headers['Strict-Transport-Security'] = HSTS;
   }
