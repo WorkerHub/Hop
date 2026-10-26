@@ -61,7 +61,7 @@ export async function sendViaSMTP(
     await session.expect(220);
 
     // Send initial EHLO
-    await session.cmd('EHLO Hop');
+    await session.cmd('EHLO hop');
     await session.expect(250);
 
     // Upgrade to TLS for non-implicit-TLS connections
@@ -117,7 +117,7 @@ class SmtpSession {
     this.buf = ''; // discard any buffered plain-text data
 
     // Re-issue EHLO on the now-TLS channel
-    await this.cmd('EHLO Hop');
+    await this.cmd('EHLO hop');
     await this.expect(250);
   }
 
@@ -144,7 +144,7 @@ class SmtpSession {
     await this.expect(354);
 
     const date = new Date().toUTCString();
-    const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@Hop>`;
+    const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@hop>`;
 
     // Encode body as base64 — safe for all character sets without 8BITMIME negotiation
     const b64Body = wrapBase64(encodeUtf8Base64(html));

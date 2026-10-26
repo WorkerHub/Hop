@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prints the effective TABLE_PREFIX of a deployed Worker version. When the
-# Worker has no TABLE_PREFIX binding, the project default ('sl') is printed —
+# Worker has no TABLE_PREFIX binding, the project default ('hop') is printed —
 # matching the runtime three-state resolution in src/lib/table-prefix.ts.
 # Run from apps/worker (needs wrangler.toml with real IDs injected).
 #

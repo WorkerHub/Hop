@@ -1,4 +1,4 @@
-name = "Hop"
+name = "hop"
 main = "src/index.ts"
 compatibility_date = "2025-04-01"
 account_id = "CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER"

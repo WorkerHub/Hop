@@ -13,7 +13,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "paths": {
-      "@Hop/shared": ["../../packages/shared/src/index.ts"]
+      "@hop/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src/**/*"],

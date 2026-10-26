@@ -17,16 +17,16 @@ const scripts = fileURLToPath(new URL('.', import.meta.url));
 const worker = fileURLToPath(new URL('../../apps/worker/', import.meta.url));
 
 function fixture(t) {
-  const cwd = mkdtempSync(join(tmpdir(), 'Hop-d1-test-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'hop-d1-test-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   writeFileSync(join(cwd, 'package.json'), '{"private":true}');
   writeFileSync(
     join(cwd, 'wrangler.toml'),
-    `name = "Hop-migration-test"
+    `name = "hop-migration-test"
 compatibility_date = "2025-04-01"
 [[d1_databases]]
 binding = "DB"
-database_name = "Hop-test"
+database_name = "hop-test"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 `,

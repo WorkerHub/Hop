@@ -3,7 +3,7 @@
 // GitHub Actions `vars.TABLE_PREFIX` cannot distinguish "unset" from "empty",
 // so the deploy workflow uses a reserved word to preserve the three runtime
 // states:
-//   unset / empty → DEFAULT_TABLE_PREFIX ('sl')
+//   unset / empty → DEFAULT_TABLE_PREFIX ('hop')
 //   'none'        → '' (explicit no prefix; the deployer accepts the
 //                    table-collision risk)
 //   anything else → as-is

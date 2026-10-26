@@ -8,12 +8,12 @@ import {
   resolveTablePrefix,
 } from '../src/lib/table-prefix.ts';
 
-test('默认前缀常量是 sl', () => {
-  assert.equal(DEFAULT_TABLE_PREFIX, 'sl');
+test('默认前缀常量是 hop', () => {
+  assert.equal(DEFAULT_TABLE_PREFIX, 'hop');
 });
 
-test('三态解析：未配置（undefined）→ 默认 sl', () => {
-  assert.equal(resolveTablePrefix(undefined), 'sl');
+test('三态解析：未配置（undefined）→ 默认 hop', () => {
+  assert.equal(resolveTablePrefix(undefined), 'hop');
 });
 
 test('三态解析：显式空字符串 → 无前缀', () => {
@@ -41,8 +41,8 @@ test('tbl 在表名前补下划线，无前缀则原样返回', () => {
 });
 
 test('db.ts 的 tbl(env, name) 走同一三态解析', () => {
-  assert.equal(tbl({ TABLE_PREFIX: undefined }, 'users'), 'sl_users');
-  assert.equal(tbl({}, 'users'), 'sl_users');
+  assert.equal(tbl({ TABLE_PREFIX: undefined }, 'users'), 'hop_users');
+  assert.equal(tbl({}, 'users'), 'hop_users');
   assert.equal(tbl({ TABLE_PREFIX: '' }, 'users'), 'users');
   assert.equal(tbl({ TABLE_PREFIX: 'SL' }, 'users'), 'SL_users');
 });
