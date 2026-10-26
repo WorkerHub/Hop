@@ -69,7 +69,7 @@ Repository variables (the deploy workflow reads these):
 | `D1_DATABASE_ID` | D1 database ID from the previous step |
 | `D1_DATABASE_NAME` | (Optional) Only needed if you customized the D1 database name in the previous step; otherwise, no configuration is required |
 | `TABLE_PREFIX` | (Optional) Production environment variable. The CI reserved word `none` means explicit no prefix. Must equal the Worker's `TABLE_PREFIX` plain-text variable (step 4). |
-| `APP_URL` | Production environment variable used by the smoke test; must point at the production URL and equal the Worker's `APP_URL` variable (step 4). |
+| `APP_URL` | Production URL used by the smoke test (step 6). Independent of the optional Worker variable of the same name (step 4) — the Worker no longer needs it. |
 
 The deploy workflow (`.github/workflows/deploy.yml`) injects the resource IDs into `wrangler.toml` at deploy time via `sed`, so no IDs are ever committed to the repository.
 
@@ -79,10 +79,9 @@ Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages 
 
 | Name | Type | Required | Example / Notes |
 |---|---|---|---|
-| `APP_URL` | Variable | Yes | `https://yourdomain.com` — must equal the GitHub `APP_URL` variable (step 3) |
-| `APP_NAME` | Variable | Yes | `Hop` — default app name, overridable in admin UI |
-| `RP_ID` | Variable | Yes | `yourdomain.com` — WebAuthn relying party ID (domain only) |
-| `APP_ORIGIN` | Variable | Yes | `https://yourdomain.com` — WebAuthn origin (full URL) |
+| `APP_URL` | Variable | No | Canonical base URL (e.g. `https://yourdomain.com`). Optional — defaults to the origin of each request. Set it only to pin a URL that differs from the one clients hit. |
+| `RP_ID` | Variable | No | WebAuthn relying party ID (domain only). Optional — defaults to the request hostname. |
+| `APP_ORIGIN` | Variable | No | WebAuthn origin (full URL). Optional — defaults to the origin of each request. |
 | `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `hop` (`hop_users`, `hop_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Must equal the GitHub `TABLE_PREFIX` variable (step 3). Set **before** first setup and never change it once data exists. |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | `openssl rand -hex 32` — encrypts TOTP credentials; rotating it invalidates every bound TOTP. The **only** secret configured in the Cloudflare console and never handled by CI. |
 
@@ -90,7 +89,11 @@ Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages 
 >
 > `JWT_SECRET` and `SETUP_SECRET` are **not** configured here — CI uploads them from the GitHub Secrets added in step 3. `TOTP_ENCRYPTION_KEY` is the only secret that stays exclusively in the Cloudflare console.
 >
-> The ordinary variables `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` are set via the **Cloudflare dashboard** only and are **not migrated** by CI; their values must **never change** — `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers, and changing them invalidates every user's passkeys. `APP_URL` and `TABLE_PREFIX` are also read by CI as GitHub variables (step 3) for the smoke test and prefix resolution, so keep those two GitHub variables equal to these Worker variables.
+> `APP_URL` / `RP_ID` / `APP_ORIGIN` are optional: when unset the Worker derives them from the incoming request (see [Environment Variables](#environment-variables)). An explicit value always wins, so a deployment that already configures them behaves exactly as before. `APP_NAME` is **no longer an env var** — the app name is the admin UI setting `app_name` (default `Hop`).
+>
+> `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers. If you configure them, their values must **never change** — changing them invalidates every user's passkeys. With them unset, the rpID is derived from the hostname the user actually visits, so credentials stay bound to that hostname: visiting through your custom domain behaves like the old explicit config, while visiting through another hostname (e.g. `*.workers.dev`) yields a different rpID and therefore different passkey scope — inherent to a multi-hostname deployment, not a regression.
+>
+> The GitHub `TABLE_PREFIX` variable (step 3) still feeds prefix resolution; keep it equal to the Worker's `TABLE_PREFIX`.
 >
 > Email provider settings (Resend API key, SMTP credentials, etc.) are configured in the **admin UI** after first login — no Cloudflare dashboard config needed.
 
@@ -175,9 +178,10 @@ Navigate to your deployed URL and register — the first account is automaticall
 ```bash
 # 1. Create apps/worker/.dev.vars
 cat > apps/worker/.dev.vars << 'EOF'
-APP_URL=http://localhost:8787
-APP_NAME=Hop
-RP_ID=localhost
+# APP_URL / RP_ID / APP_ORIGIN are optional — unset, they are derived from the
+# request URL (http://localhost:8787 → rpID "localhost"). APP_ORIGIN is only
+# needed for passkey testing, where the page runs on the Vite dev server
+# (:5173) while /api is proxied to the Worker (:8787).
 APP_ORIGIN=http://localhost:5173
 JWT_SECRET=dev-secret-at-least-32-characters-long
 TOTP_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
@@ -300,10 +304,9 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 
 | Variable | Type | Required | Description |
 |---|---|---|---|
-| `APP_URL` | Var | Yes | Canonical base URL (e.g. `https://go.example.com`) |
-| `APP_NAME` | Var | Yes | Default app name; overridable in admin UI |
-| `RP_ID` | Var | Yes | WebAuthn relying party ID (domain without protocol) |
-| `APP_ORIGIN` | Var | Yes | WebAuthn origin (full URL) |
+| `APP_URL` | Var | No | Canonical base URL (e.g. `https://go.example.com`). Optional — defaults to the request origin (used for CORS, HSTS, the refresh cookie's `Secure` flag and the `/404` redirect). |
+| `RP_ID` | Var | No | WebAuthn relying party ID (domain without protocol). Optional — defaults to the request hostname. |
+| `APP_ORIGIN` | Var | No | WebAuthn origin (full URL). Optional — defaults to the request origin. |
 | `TABLE_PREFIX` | Var | No | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); custom value → that value (case preserved); explicit empty → no prefix. Set once before the first migration — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
 | `JWT_SECRET` | Secret | Yes | HS256 signing key, ≥ 32 chars |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | Hex string from `openssl rand -hex 32` |
@@ -317,7 +320,7 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 |---|---|---|
 | `registration_enabled` | `true` / `false` | Allow new user registration (default: `false`) |
 | `require_email_verification` | `true` / `false` | Require new users to verify their email before signing in (default: `false`) |
-| `app_name` | string | Override displayed app name |
+| `app_name` | string | App name shown in the UI, emails and passkey prompts. Default `Hop`. There is no env var for it — this setting is the single source. |
 | `email_provider` | `resend` / `smtp` | Which email backend to use (default: `resend`) |
 | `resend_api_key` | string | Resend API key |
 | `email_from_domain` | domain | Sender domain for Resend, e.g. `example.com` |

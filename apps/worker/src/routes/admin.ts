@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { appName as resolveAppName } from '../lib/app-defaults.js';
 import { hashPassword } from '../lib/crypto.js';
 import { isUniqueConstraintError, tbl } from '../lib/db.js';
 import { EmailConfigError, sendEmail, testEmailHtml } from '../lib/email.js';
@@ -6,8 +7,6 @@ import {
   checkTestEmailRateLimit,
   deleteCachedLink,
   deleteCachedSetting,
-  getCachedSetting,
-  setCachedSetting,
 } from '../lib/kv.js';
 import {
   runMigrations,
@@ -52,18 +51,6 @@ async function auditLog(
   )
     .bind(adminId, action, targetId, details ? JSON.stringify(details) : null)
     .run();
-}
-
-// Read app_name from DB/KV so admin settings changes take effect immediately.
-async function getAppName(env: Env): Promise<string> {
-  const cached = await getCachedSetting(env.LINKS_KV, 'app_name');
-  if (cached !== null) return cached;
-  const row = await env.DB.prepare(
-    `SELECT value FROM ${tbl(env, 'settings')} WHERE key = 'app_name'`,
-  ).first<{ value: string }>();
-  const val = row?.value ?? env.APP_NAME;
-  await setCachedSetting(env.LINKS_KV, 'app_name', val);
-  return val;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -553,7 +540,7 @@ admin.post('/email/test', async (c) => {
     );
   }
 
-  const appName = await getAppName(c.env);
+  const appName = await resolveAppName(c.env);
 
   try {
     await sendEmail(c.env, {

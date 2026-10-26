@@ -11,10 +11,12 @@ export interface Env {
   ASSETS: Fetcher;
 
   // Vars
-  APP_NAME: string;
-  APP_URL: string;
-  RP_ID: string;
-  APP_ORIGIN: string;
+  // ONE-437: all three are optional — when unset they are derived from the
+  // request (see lib/app-defaults.ts). APP_NAME is deliberately gone from Env:
+  // the app name lives only in the admin UI setting (settings.app_name).
+  APP_URL?: string;
+  RP_ID?: string;
+  APP_ORIGIN?: string;
   TABLE_PREFIX?: string;
 
   // Secrets

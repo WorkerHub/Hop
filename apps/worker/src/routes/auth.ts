@@ -1,6 +1,12 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import {
+  appOrigin,
+  appUrl,
+  appName as resolveAppName,
+  rpId,
+} from '../lib/app-defaults.js';
+import {
   generateOtp,
   hashPassword,
   sha256,
@@ -66,7 +72,9 @@ type AuthContext = Context<{ Bindings: Env; Variables: Variables }>;
 // ─── Cookie helpers (H4: HttpOnly refresh token) ──────────────────────────────
 
 function setRefreshCookie(c: AuthContext, refreshToken: string): void {
-  const isSecure = c.env.APP_URL.startsWith('https');
+  // appUrl(c) resolves APP_URL, falling back to this request's origin, so a
+  // deployment without APP_URL still gets Secure cookies over https.
+  const isSecure = appUrl(c).startsWith('https');
   c.header(
     'Set-Cookie',
     `refreshToken=${refreshToken}; HttpOnly; SameSite=Strict; Max-Age=604800; Path=/api/auth${isSecure ? '; Secure' : ''}`,
@@ -74,7 +82,9 @@ function setRefreshCookie(c: AuthContext, refreshToken: string): void {
 }
 
 function clearRefreshCookie(c: AuthContext): void {
-  const isSecure = c.env.APP_URL.startsWith('https');
+  // appUrl(c) resolves APP_URL, falling back to this request's origin, so a
+  // deployment without APP_URL still gets Secure cookies over https.
+  const isSecure = appUrl(c).startsWith('https');
   c.header(
     'Set-Cookie',
     `refreshToken=; HttpOnly; SameSite=Strict; Max-Age=0; Path=/api/auth${isSecure ? '; Secure' : ''}`,
@@ -137,18 +147,6 @@ async function isEmailVerificationRequired(env: Env): Promise<boolean> {
   const val = row?.value ?? 'false';
   await setCachedSetting(env.LINKS_KV, 'require_email_verification', val);
   return val === 'true';
-}
-
-// LOW-3: Read app_name from DB/KV so admin settings changes take effect immediately.
-async function getAppName(env: Env): Promise<string> {
-  const cached = await getCachedSetting(env.LINKS_KV, 'app_name');
-  if (cached !== null) return cached;
-  const row = await env.DB.prepare(
-    `SELECT value FROM ${tbl(env, 'settings')} WHERE key = 'app_name'`,
-  ).first<{ value: string }>();
-  const val = row?.value ?? env.APP_NAME;
-  await setCachedSetting(env.LINKS_KV, 'app_name', val);
-  return val;
 }
 
 // S4: Dummy hash for constant-time login response when user is not found.
@@ -299,7 +297,7 @@ auth.post('/register', async (c) => {
     const code = generateOtp(6);
     const codeHash = await sha256(code);
     const expiresAt = Math.floor(Date.now() / 1000) + 600;
-    const appName = await getAppName(c.env);
+    const appName = await resolveAppName(c.env);
 
     try {
       await sendEmail(c.env, {
@@ -489,7 +487,7 @@ auth.post('/resend-verify-email', async (c) => {
   const code = generateOtp(6);
   const codeHash = await sha256(code);
   const expiresAt = Math.floor(Date.now() / 1000) + 600;
-  const appName = await getAppName(c.env);
+  const appName = await resolveAppName(c.env);
 
   try {
     await sendEmail(c.env, {
@@ -819,7 +817,7 @@ auth.post('/2fa/totp/setup', requireAuth, async (c) => {
   }
 
   const secret = generateTotpSecret();
-  const appName = await getAppName(c.env);
+  const appName = await resolveAppName(c.env);
   const uri = buildTotpUri(secret, userEmail, appName);
 
   const encrypted = await encryptTotpSecret(secret, c.env.TOTP_ENCRYPTION_KEY);
@@ -1151,7 +1149,7 @@ auth.post('/2fa/email-otp/send-verify', requireAuth, async (c) => {
   const code = generateOtp(6);
   const codeHash = await sha256(code);
   const expiresAt = Math.floor(Date.now() / 1000) + 600;
-  const appName = await getAppName(c.env);
+  const appName = await resolveAppName(c.env);
 
   try {
     await sendEmail(c.env, {
@@ -1288,7 +1286,7 @@ auth.post('/2fa/email-otp/send', async (c) => {
   const codeHash = await sha256(code);
   const expiresAt = Math.floor(Date.now() / 1000) + 600;
 
-  const appName = await getAppName(c.env);
+  const appName = await resolveAppName(c.env);
 
   try {
     await sendEmail(c.env, {
@@ -1483,8 +1481,8 @@ auth.post('/2fa/passkey/register-options', requireAuth, async (c) => {
   }
 
   const options = await generateRegistrationOptions({
-    rpName: c.env.APP_NAME,
-    rpID: c.env.RP_ID,
+    rpName: await resolveAppName(c.env),
+    rpID: rpId(c),
     userID: new TextEncoder().encode(userId) as Uint8Array<ArrayBuffer>,
     userName: userEmail,
     excludeCredentials: existingPasskeys.results.map((pk) => ({
@@ -1546,8 +1544,8 @@ auth.post('/2fa/passkey/register-verify', requireAuth, async (c) => {
     verification = await verifyPasskeyRegistration(
       body.response,
       stored.challenge as string,
-      c.env.RP_ID,
-      c.env.APP_ORIGIN,
+      rpId(c),
+      appOrigin(c),
     );
   } catch {
     return apiError(
@@ -1723,7 +1721,7 @@ auth.post('/2fa/passkey/verify-options', async (c) => {
     .all<Pick<PasskeyRow, 'id' | 'transports'>>();
 
   const options = await generateAuthenticationOptions({
-    rpID: c.env.RP_ID,
+    rpID: rpId(c),
     allowCredentials: passkeys.results.map((pk) => ({
       id: pk.id,
       transports: pk.transports ? JSON.parse(pk.transports) : [],
@@ -1828,8 +1826,8 @@ auth.post('/2fa/passkey/verify', async (c) => {
     verification = await verifyPasskeyAuthentication(
       body.response,
       stored.challenge as string,
-      c.env.RP_ID,
-      c.env.APP_ORIGIN,
+      rpId(c),
+      appOrigin(c),
       passkey,
     );
   } catch {
@@ -2005,7 +2003,7 @@ auth.post('/forgot-password', async (c) => {
           .bind(email, 'password_reset', codeHash, expiresAt)
           .run();
 
-        const appName = await getAppName(c.env);
+        const appName = await resolveAppName(c.env);
         await sendEmail(c.env, {
           to: email,
           subject: `${appName} — Password Reset`,

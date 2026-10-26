@@ -70,7 +70,7 @@
 | `D1_DATABASE_ID` | 上一步中的 D1 database ID |
 | `D1_DATABASE_NAME` | （可选）仅当上一步自定义了 D1 数据库名称时才需配置为对应名称，否则无须配置。 |
 | `TABLE_PREFIX` | （可选）production 环境变量。CI 中保留字 `none` 表示显式无前缀。必须与 Worker 的同名明文变量一致（见第 4 步）。 |
-| `APP_URL` | production 环境变量，smoke test 使用，须指向生产 URL，并与 Worker 的 `APP_URL` 变量一致（见第 4 步）。 |
+| `APP_URL` | 生产 URL，供 smoke test 使用（见第 6 步）。与第 4 步中同名的 Worker 变量无关——Worker 已不再需要它。 |
 
 部署工作流（`.github/workflows/deploy.yml`）在部署时通过 `sed` 将这些资源 ID 注入 `wrangler.toml`，因此 ID 不会提交到仓库。
 
@@ -80,10 +80,9 @@
 
 | 名称 | 类型 | 必填 | 示例 / 说明 |
 |---|---|---|---|
-| `APP_URL` | Variable | 是 | `https://yourdomain.com` — 须与 GitHub 中的 `APP_URL` 变量一致（第 3 步） |
-| `APP_NAME` | Variable | 是 | `Hop` — 默认应用名称，可在管理界面覆盖 |
-| `RP_ID` | Variable | 是 | `yourdomain.com` — WebAuthn 依赖方 ID（仅域名） |
-| `APP_ORIGIN` | Variable | 是 | `https://yourdomain.com` — WebAuthn 来源（完整 URL） |
+| `APP_URL` | Variable | 否 | 规范基础 URL（例如 `https://yourdomain.com`）。可选——未配置时按每个请求的 origin 推导。仅当需要固定一个与客户端实际访问地址不同的 URL 时才配置。 |
+| `RP_ID` | Variable | 否 | WebAuthn 依赖方 ID（仅域名）。可选——未配置时按请求 hostname 推导。 |
+| `APP_ORIGIN` | Variable | 否 | WebAuthn 来源（完整 URL）。可选——未配置时按请求 origin 推导。 |
 | `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
 | `TOTP_ENCRYPTION_KEY` | Secret | 是 | `openssl rand -hex 32` — 加密 TOTP 凭据，轮换会使已绑定的 TOTP 全部失效。这是**唯一**在 Cloudflare 控制台配置的 Secret，不经 CI。 |
 
@@ -91,7 +90,11 @@
 >
 > `JWT_SECRET` 与 `SETUP_SECRET` **不在此处配置** — 由 CI 从第 3 步添加的 GitHub Secret 上传。只有 `TOTP_ENCRYPTION_KEY` 仅存在于 Cloudflare 控制台、从不经 CI。
 >
-> 普通变量 `APP_NAME` / `APP_URL` / `RP_ID` / `APP_ORIGIN` 仅在 **Cloudflare 控制台** 设置，不迁移；其值**严禁变更**——`RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识，一旦变更将导致所有用户的通行密钥失效。`APP_URL` 与 `TABLE_PREFIX` 同时作为 GitHub 变量（第 3 步）供 smoke test 与前缀解析读取，需与这里的 Worker 变量保持同值。
+> `APP_URL` / `RP_ID` / `APP_ORIGIN` 均为可选：未配置时 Worker 按请求推导（见[环境变量](#环境变量)）。显式配置始终优先，因此已配置这三项的存量部署行为与改前完全一致。`APP_NAME` **不再是环境变量**——应用名称唯一来源是管理面设置 `app_name`（默认 `Hop`）。
+>
+> `RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识。若配置，其值**严禁变更**——一旦变更将导致所有用户的通行密钥失效。若未配置，rpID 按用户实际访问的 hostname 推导，凭据仍按域名绑定：经正式自定义域名访问与原显式配置等价；经其他域名（例如 `*.workers.dev`）访问会得到不同的 rpID，从而形成不同的通行密钥作用域——这是多域名部署的固有行为，不是本次变更的回归。
+>
+> GitHub 中的 `TABLE_PREFIX` 变量（第 3 步）仍供前缀解析读取，需与 Worker 的同名变量保持同值。
 >
 > 邮件提供商设置（Resend API 密钥、SMTP 凭据等）在首次登录后通过**管理界面**配置 — 无需在 Cloudflare 控制台中配置。
 
@@ -159,9 +162,9 @@ curl -X POST https://your-worker.workers.dev/api/setup \
 ```bash
 # 1. 创建 apps/worker/.dev.vars
 cat > apps/worker/.dev.vars << 'EOF'
-APP_URL=http://localhost:8787
-APP_NAME=Hop
-RP_ID=localhost
+# APP_URL / RP_ID / APP_ORIGIN 均可选——不配时按请求 URL 推导
+# （http://localhost:8787 → rpID "localhost"）。只有测试通行密钥时才需要
+# APP_ORIGIN：此时页面由 Vite dev server（:5173）提供，而 /api 代理到 Worker（:8787）。
 APP_ORIGIN=http://localhost:5173
 JWT_SECRET=dev-secret-at-least-32-characters-long
 TOTP_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
@@ -284,10 +287,9 @@ GET /:slug  →  302 跳转到目标 URL
 
 | 变量 | 类型 | 必填 | 描述 |
 |---|---|---|---|
-| `APP_URL` | 变量 | 是 | 规范基础 URL（例如 `https://go.example.com`） |
-| `APP_NAME` | 变量 | 是 | 默认应用名称；可在管理界面覆盖 |
-| `RP_ID` | 变量 | 是 | WebAuthn 依赖方 ID（不含协议的域名） |
-| `APP_ORIGIN` | 变量 | 是 | WebAuthn 来源（完整 URL） |
+| `APP_URL` | 变量 | 否 | 规范基础 URL（例如 `https://go.example.com`）。可选——未配置时用请求 origin（用于 CORS、HSTS、refresh cookie 的 `Secure` 标记与 `/404` 跳转）。 |
+| `RP_ID` | 变量 | 否 | WebAuthn 依赖方 ID（不含协议的域名）。可选——未配置时用请求 hostname。 |
+| `APP_ORIGIN` | 变量 | 否 | WebAuthn 来源（完整 URL）。可选——未配置时用请求 origin。 |
 | `TABLE_PREFIX` | 变量 | 否 | 所有 D1 表名的三态前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；自定义值 → 该值（保留大小写）；显式空 → 无前缀。在第一次迁移前设置一次 — 之后更改需手动重命名所有表。只使用字母数字和下划线字符。 |
 | `JWT_SECRET` | 密钥 | 是 | HS256 签名密钥，≥ 32 字符 |
 | `TOTP_ENCRYPTION_KEY` | 密钥 | 是 | 来自 `openssl rand -hex 32` 的十六进制字符串 |
@@ -301,7 +303,7 @@ GET /:slug  →  302 跳转到目标 URL
 |---|---|---|
 | `registration_enabled` | `true` / `false` | 允许新用户注册（默认：`false`） |
 | `require_email_verification` | `true` / `false` | 要求新用户在登录前验证其邮箱地址（默认：`false`） |
-| `app_name` | 字符串 | 覆盖显示的应用名称 |
+| `app_name` | 字符串 | 界面、邮件与通行密钥提示中显示的应用名称，默认 `Hop`。没有对应的环境变量——本设置是唯一来源。 |
 | `email_provider` | `resend` / `smtp` | 使用哪个邮件后端（默认：`resend`） |
 | `resend_api_key` | 字符串 | Resend API 密钥 |
 | `email_from_domain` | 域名 | Resend 的发件人域名，例如 `example.com` |

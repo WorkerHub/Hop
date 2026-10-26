@@ -37,7 +37,6 @@ export function makeEnv(overrides: Partial<Env> = {}): TestEnv {
     DB: db,
     LINKS_KV: kv,
     ASSETS: { fetch: async () => new Response('assets', { status: 200 }) },
-    APP_NAME: 'Hop',
     APP_URL,
     RP_ID: 'example.com',
     APP_ORIGIN: APP_URL,
@@ -48,6 +47,19 @@ export function makeEnv(overrides: Partial<Env> = {}): TestEnv {
     ...overrides,
   } as unknown as Env;
   return { env, db, kv, waitUntil: [] };
+}
+
+// ONE-437: APP_URL / RP_ID / APP_ORIGIN are optional env vars now — a fresh
+// deployment configures none of them. This strips all three from the default env
+// so a test exercises the request-derived path; pass overrides to configure a
+// subset (that is how the "explicit config wins" cases are built).
+export function makeEnvWithoutAppVars(overrides: Partial<Env> = {}): TestEnv {
+  return makeEnv({
+    APP_URL: undefined,
+    RP_ID: undefined,
+    APP_ORIGIN: undefined,
+    ...overrides,
+  });
 }
 
 export async function seedUser(
