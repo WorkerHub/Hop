@@ -1,5 +1,5 @@
 -- DO NOT EDIT. Generated from src/lib/migrations.ts (getMigrations("")).
--- Regenerate with: pnpm --filter @Hop/worker generate:migrations
+-- Regenerate with: pnpm --filter @hop/worker generate:migrations
 
 CREATE TABLE users (
   id            TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),

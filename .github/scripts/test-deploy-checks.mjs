@@ -14,7 +14,7 @@ const scripts = fileURLToPath(new URL('.', import.meta.url));
 const exec = promisify(execFile);
 
 function fixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'Hop-deploy-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'hop-deploy-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   // 仅跳过重试等待，不替换 curl 或 jq。
   writeFileSync(join(dir, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
