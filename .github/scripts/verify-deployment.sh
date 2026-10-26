@@ -42,7 +42,7 @@ done
 live="$(bash "$here/worker-table-prefix.sh" "$version")"
 live="${live//[^A-Za-z0-9_]/}"
 # worker-table-prefix.sh already maps an unset Worker binding to the default
-# 'sl'; compare literally (case-sensitive) so e.g. production `SL` is never
+# 'hop'; compare literally (case-sensitive) so e.g. production `SL` is never
 # folded into `sl` and reported as a false match.
 expected="${TABLE_PREFIX:-}"
 if [[ "$live" != "$expected" ]]; then

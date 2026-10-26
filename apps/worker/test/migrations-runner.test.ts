@@ -27,13 +27,13 @@ function initializedDb(prefix: string): D1Mock {
   return db;
 }
 
-test('runMigrations 返回实际生效前缀（未配置 → sl）', async () => {
+test('runMigrations 返回实际生效前缀（未配置 → hop）', async () => {
   const db = new D1Mock(false);
   const result = await runMigrations({
     DB: db as unknown as never,
     TABLE_PREFIX: undefined,
   });
-  assert.equal(result.prefix, 'sl');
+  assert.equal(result.prefix, 'hop');
   assert.deepEqual(
     result.migrations.map((m) => [m.name, m.status]),
     [

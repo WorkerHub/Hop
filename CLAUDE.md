@@ -229,7 +229,7 @@ All set via the Cloudflare dashboard (Variables and Secrets). `keep_vars = true`
 | `APP_NAME` | Yes | Default app name (overridable in admin UI) |
 | `RP_ID` | Yes | WebAuthn relying party ID (domain only, no protocol) |
 | `APP_ORIGIN` | Yes | WebAuthn origin (full URL with protocol) |
-| `TABLE_PREFIX` | No | Three-state prefix for all D1 table names. Unset → default `sl` (`sl_users`, `sl_links`, …); a custom value → that value (case preserved, `[^a-zA-Z0-9_]` stripped); explicit empty string → no prefix (deployer accepts table-collision risk). Must be configured **before** running the setup route — changing it after initial setup requires renaming all tables manually. On GitHub Actions, `none` is the reserved word for the explicit empty string (unset/empty both become the default `sl`). A silent switch (database initialised under a different prefix) aborts setup/migrations with an error. |
+| `TABLE_PREFIX` | No | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); a custom value → that value (case preserved, `[^a-zA-Z0-9_]` stripped); explicit empty string → no prefix (deployer accepts table-collision risk). Must be configured **before** running the setup route — changing it after initial setup requires renaming all tables manually. On GitHub Actions, `none` is the reserved word for the explicit empty string (unset/empty both become the default `hop`). A silent switch (database initialised under a different prefix) aborts setup/migrations with an error. |
 
 Email sender config and API keys are managed in the **admin UI settings**, not here.
 

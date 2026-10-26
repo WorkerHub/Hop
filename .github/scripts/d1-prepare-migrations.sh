@@ -16,7 +16,7 @@
 #   prefixed — TABLE_PREFIX is in use; migrations/*.sql are not prefix-aware,
 #              so d1-prefixed-migrations.sh applies the setup-route migrations
 #
-# Three-state TABLE_PREFIX (unset → 'sl', '' → no prefix, other → as-is) is
+# Three-state TABLE_PREFIX (unset → 'hop', '' → no prefix, other → as-is) is
 # resolved by the deploy workflow before this script runs; a silent switch
 # (database already initialised under a different prefix) aborts with an error.
 #
@@ -33,7 +33,7 @@ if [[ "$location" != remote && "$location" != local ]]; then
 fi
 
 # Three-state resolution: the deploy workflow already resolves vars.TABLE_PREFIX
-# (none → '', unset/empty → 'sl') before calling this script. When invoked
+# (none → '', unset/empty → 'hop') before calling this script. When invoked
 # directly with TABLE_PREFIX unset, resolve it to the project default.
 # `${TABLE_PREFIX+x}` is empty when unset and 'x' when set (even to ''), which
 # is portable across bash 3.x and 5.x.

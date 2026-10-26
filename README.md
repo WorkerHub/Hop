@@ -83,7 +83,7 @@ Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages 
 | `APP_NAME` | Variable | Yes | `Hop` — default app name, overridable in admin UI |
 | `RP_ID` | Variable | Yes | `yourdomain.com` — WebAuthn relying party ID (domain only) |
 | `APP_ORIGIN` | Variable | Yes | `https://yourdomain.com` — WebAuthn origin (full URL) |
-| `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `sl` (`sl_users`, `sl_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Must equal the GitHub `TABLE_PREFIX` variable (step 3). Set **before** first setup and never change it once data exists. |
+| `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `hop` (`hop_users`, `hop_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Must equal the GitHub `TABLE_PREFIX` variable (step 3). Set **before** first setup and never change it once data exists. |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | `openssl rand -hex 32` — encrypts TOTP credentials; rotating it invalidates every bound TOTP. The **only** secret configured in the Cloudflare console and never handled by CI. |
 
 > `keep_vars = true` is set in `wrangler.toml`, so deployments will never overwrite these values.
@@ -110,7 +110,7 @@ and prints the planned migrations in the log. Migrations must stay backward comp
 only add tables, indexes or columns — never drop, rename or rewrite existing data.
 
 GitHub Actions cannot distinguish an unset `vars.TABLE_PREFIX` from an empty one, so
-the deploy workflow resolves it to the three runtime states: **unset or empty → `sl`**
+the deploy workflow resolves it to the three runtime states: **unset or empty → `hop`**
 (the default), **`none` → explicit empty string** (no prefix), **anything else → as-is**.
 
 > **Upgrade warning** — a legacy deployment that never set a prefix used unprefixed
@@ -118,7 +118,8 @@ the deploy workflow resolves it to the three runtime states: **unset or empty �
 > under, setup and migrations **abort with an error** instead of silently switching to
 > a different (usually empty) set of tables. Configure `TABLE_PREFIX` to its previous
 > value (`TABLE_PREFIX=''`, or `TABLE_PREFIX=none` in CI, to keep unprefixed tables)
-> before upgrading.
+> before upgrading. Installations created before the `sl` → `hop` default change that
+> relied on the bare default (`sl_users`, …) must set `TABLE_PREFIX=sl` explicitly.
 
 When using a prefix, set `TABLE_PREFIX` under the GitHub **production environment →
 Variables** to exactly the same value as the Worker's `TABLE_PREFIX` **plain-text
@@ -303,7 +304,7 @@ All variables and secrets are managed in the **Cloudflare dashboard** (Workers &
 | `APP_NAME` | Var | Yes | Default app name; overridable in admin UI |
 | `RP_ID` | Var | Yes | WebAuthn relying party ID (domain without protocol) |
 | `APP_ORIGIN` | Var | Yes | WebAuthn origin (full URL) |
-| `TABLE_PREFIX` | Var | No | Three-state prefix for all D1 table names. Unset → default `sl` (`sl_users`, `sl_links`, …); custom value → that value (case preserved); explicit empty → no prefix. Set once before the first migration — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
+| `TABLE_PREFIX` | Var | No | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); custom value → that value (case preserved); explicit empty → no prefix. Set once before the first migration — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
 | `JWT_SECRET` | Secret | Yes | HS256 signing key, ≥ 32 chars |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | Hex string from `openssl rand -hex 32` |
 | `SETUP_SECRET` | Secret | Yes | Secret path for triggering DB migrations via HTTP |

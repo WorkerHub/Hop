@@ -84,7 +84,7 @@
 | `APP_NAME` | Variable | 是 | `Hop` — 默认应用名称，可在管理界面覆盖 |
 | `RP_ID` | Variable | 是 | `yourdomain.com` — WebAuthn 依赖方 ID（仅域名） |
 | `APP_ORIGIN` | Variable | 是 | `https://yourdomain.com` — WebAuthn 来源（完整 URL） |
-| `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `sl`（`sl_users`、`sl_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
+| `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
 | `TOTP_ENCRYPTION_KEY` | Secret | 是 | `openssl rand -hex 32` — 加密 TOTP 凭据，轮换会使已绑定的 TOTP 全部失效。这是**唯一**在 Cloudflare 控制台配置的 Secret，不经 CI。 |
 
 > `wrangler.toml` 中设置了 `keep_vars = true`，因此部署不会覆盖这些值。
@@ -110,9 +110,9 @@ GitHub Actions 会在部署代码**之前**自动执行迁移：无前缀时仍�
 `apps/worker/src/lib/migrations.ts`，按 `_<prefix>_schema_migrations` 跳过已执行项，
 并在日志中打印待执行计划。迁移必须向后兼容，只添加表、索引或列，不删除、重命名或修改现有数据。
 
-GitHub Actions 无法区分「未设置的 `vars.TABLE_PREFIX`」与「空字符串」，因此部署脚本按三态约定解析：**未设置或为空 → 默认 `sl`**；**保留字 `none` → 显式空字符串**（无前缀）；**其他值 → 原样使用**。
+GitHub Actions 无法区分「未设置的 `vars.TABLE_PREFIX`」与「空字符串」，因此部署脚本按三态约定解析：**未设置或为空 → 默认 `hop`**；**保留字 `none` → 显式空字符串**（无前缀）；**其他值 → 原样使用**。
 
-> **升级警告** — 从未配置过前缀的旧部署使用无前缀表。若解析出的前缀与库中已初始化的前缀不一致，setup 与迁移会**中止报错**，而不是静默切换到另一套（通常是空的）表。升级前请先把 `TABLE_PREFIX` 配成原值（保持无前缀则配置 `TABLE_PREFIX=''`，CI 中为 `TABLE_PREFIX=none`）。
+> **升级警告** — 从未配置过前缀的旧部署使用无前缀表。若解析出的前缀与库中已初始化的前缀不一致，setup 与迁移会**中止报错**，而不是静默切换到另一套（通常是空的）表。升级前请先把 `TABLE_PREFIX` 配成原值（保持无前缀则配置 `TABLE_PREFIX=''`，CI 中为 `TABLE_PREFIX=none`）。在 `sl` → `hop` 默认值变更前依赖默认前缀（`sl_users` 等）的部署，需显式配置 `TABLE_PREFIX=sl`。
 
 使用前缀时，在 GitHub 的 **production environment → Variables** 中设置
 `TABLE_PREFIX`，与 Cloudflare Worker 的同名**明文变量**完全一致（例如 `SL`，仅字母、数字和下划线）。
@@ -288,7 +288,7 @@ GET /:slug  →  302 跳转到目标 URL
 | `APP_NAME` | 变量 | 是 | 默认应用名称；可在管理界面覆盖 |
 | `RP_ID` | 变量 | 是 | WebAuthn 依赖方 ID（不含协议的域名） |
 | `APP_ORIGIN` | 变量 | 是 | WebAuthn 来源（完整 URL） |
-| `TABLE_PREFIX` | 变量 | 否 | 所有 D1 表名的三态前缀。未配置 → 默认 `sl`（`sl_users`、`sl_links` 等）；自定义值 → 该值（保留大小写）；显式空 → 无前缀。在第一次迁移前设置一次 — 之后更改需手动重命名所有表。只使用字母数字和下划线字符。 |
+| `TABLE_PREFIX` | 变量 | 否 | 所有 D1 表名的三态前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；自定义值 → 该值（保留大小写）；显式空 → 无前缀。在第一次迁移前设置一次 — 之后更改需手动重命名所有表。只使用字母数字和下划线字符。 |
 | `JWT_SECRET` | 密钥 | 是 | HS256 签名密钥，≥ 32 字符 |
 | `TOTP_ENCRYPTION_KEY` | 密钥 | 是 | 来自 `openssl rand -hex 32` 的十六进制字符串 |
 | `SETUP_SECRET` | 密钥 | 是 | 通过 HTTP 触发数据库迁移的密钥路径 |

@@ -2,7 +2,7 @@
 //
 // Three states, distinguished at the call site by whether TABLE_PREFIX is
 // `undefined` versus the empty string:
-//   undefined → DEFAULT_TABLE_PREFIX ('sl')
+//   undefined → DEFAULT_TABLE_PREFIX ('hop')
 //   ''        → '' (no prefix — the deployer accepts the table-collision risk)
 //   any other → the value with [^a-zA-Z0-9_] stripped, case preserved
 //
@@ -10,7 +10,7 @@
 // .github/scripts/d1-migrations.mjs (through migrations.ts) via Node's built-in
 // TypeScript type stripping.
 
-export const DEFAULT_TABLE_PREFIX = 'sl';
+export const DEFAULT_TABLE_PREFIX = 'hop';
 
 // Three-state resolution of a raw TABLE_PREFIX value.
 export function resolveTablePrefix(raw: string | undefined): string {

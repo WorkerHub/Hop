@@ -159,8 +159,8 @@ esac
 // ─── CI 三态解析（none 约定）─────────────────────────────────────────────────
 
 for (const scenario of [
-  { name: 'vars 未设 → 默认 sl', env: undefined, expected: 'sl' },
-  { name: 'vars 为空 → 默认 sl', env: '', expected: 'sl' },
+  { name: 'vars 未设 → 默认 hop', env: undefined, expected: 'hop' },
+  { name: 'vars 为空 → 默认 hop', env: '', expected: 'hop' },
   { name: 'vars 为保留字 none → 空字符串', env: 'none', expected: '' },
   { name: 'vars 为其他值 → 原样（含大小写）', env: 'SL', expected: 'SL' },
 ]) {
@@ -184,7 +184,7 @@ for (const scenario of [
   });
 }
 
-test('worker-table-prefix.sh：未设置绑定 → 默认 sl', (t) => {
+test('worker-table-prefix.sh：未设置绑定 → 默认 hop', (t) => {
   const f = fixture(t);
   writeFileSync(
     join(f.dir, 'pnpm'),
@@ -202,5 +202,5 @@ esac
     [join(scripts, 'worker-table-prefix.sh'), 'v1'],
     { env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  assert.equal(out, 'sl');
+  assert.equal(out, 'hop');
 });
