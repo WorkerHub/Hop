@@ -161,3 +161,22 @@ ALTER TABLE ${t('users')} ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
     },
   ];
 }
+
+// ─── Wrangler migration files owned by this app ───────────────────────────────
+// The `name` values Wrangler records in its `d1_migrations` ledger when it
+// applies this app's migrations (migrations/*.sql) without a table prefix.
+//
+// The silent-switch guard (src/lib/migrations-runner.ts) compares the ledger's
+// contents against this set instead of only checking that the table exists:
+// `d1_migrations` is a database-wide singleton, so any other app on the shared
+// D1 database that ever ran `wrangler d1 migrations apply` leaves it behind,
+// recording *that* app's file names — never a sign of an unprefixed schema here.
+//
+// Derived from each migration's `fileName`, the same single source of truth that
+// generates migrations/*.sql (scripts/generate-migrations.ts): adding a Wrangler
+// migration means adding a migration here, so there is no second list to keep
+// in sync. test/migrations-runner.test.ts asserts this set equals the files
+// actually present in migrations/, so a hand-edited directory fails CI.
+export const WRANGLER_MIGRATION_FILES: readonly string[] = getMigrations(
+  '',
+).map((m) => m.fileName);

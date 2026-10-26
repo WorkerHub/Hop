@@ -3,6 +3,7 @@ import {
   createMigrationsTableSql,
   getMigrations,
   migrationsTable,
+  WRANGLER_MIGRATION_FILES,
 } from './migrations.js';
 import { resolveTablePrefix } from './table-prefix.js';
 
@@ -92,8 +93,19 @@ async function detectTablePrefixConflict(
   // An unprefixed schema of this app: the legacy setup route records its
   // history in `_schema_migrations`, and wrangler's unprefixed path in
   // `d1_migrations`. A bare `users` table alone is NOT a signal — the shared
-  // D1 database can carry other apps' tables.
-  let hasUnprefixed = has('d1_migrations');
+  // D1 database can carry other apps' tables. Neither is a bare `d1_migrations`
+  // table: it is a database-wide singleton, left behind by any other app on the
+  // shared database that ran `wrangler d1 migrations apply`, recording that
+  // app's file names. Only rows naming this app's own migration files count.
+  let hasUnprefixed = false;
+  if (has('d1_migrations')) {
+    const applied = await db
+      .prepare('SELECT name FROM d1_migrations')
+      .all<{ name: string }>();
+    hasUnprefixed = applied.results.some((r) =>
+      WRANGLER_MIGRATION_FILES.includes(r.name),
+    );
+  }
   if (has('_schema_migrations')) {
     const history = await db
       .prepare('SELECT name FROM _schema_migrations')
