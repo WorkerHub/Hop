@@ -2,7 +2,7 @@ import { TOTP } from 'otpauth';
 import { aesDecrypt, aesEncrypt } from './crypto.js';
 
 // L1: Single issuer constant used by both buildTotpUri and verifyTotp
-const TOTP_ISSUER = 'ShortLink';
+const TOTP_ISSUER = 'Hop';
 
 export function generateTotpSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(20));

@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS ${t('settings')} (
 INSERT OR IGNORE INTO ${t('settings')} (key, value) VALUES
   ('registration_enabled',       'true'),
   ('require_email_verification', 'false'),
-  ('app_name',                   'ShortLink'),
+  ('app_name',                   'Hop'),
   ('email_provider',       'resend'),
   ('smtp_host',            ''),
   ('smtp_port',            '587'),

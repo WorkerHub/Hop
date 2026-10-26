@@ -1,4 +1,4 @@
-# ShortLink
+# Hop
 
 [中文](./README.zh-CN.md)
 
@@ -43,7 +43,7 @@ Create the following resources in Cloudflare, please note their IDs for the next
 | Resource | Name |
 |---|---|
 | Workers KV | `LINKS_KV` (customizable)|
-| D1 SQL databases | `shortlink` (customizable) |
+| D1 SQL databases | `Hop` (customizable) |
 
 
 ### 3. Add GitHub Actions secrets and variables
@@ -75,12 +75,12 @@ The deploy workflow (`.github/workflows/deploy.yml`) injects the resource IDs in
 
 ### 4. Configure variables and secrets
 
-Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages → shortlink → Settings → Variables and Secrets** and add:
+Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets** and add:
 
 | Name | Type | Required | Example / Notes |
 |---|---|---|---|
 | `APP_URL` | Variable | Yes | `https://yourdomain.com` — must equal the GitHub `APP_URL` variable (step 3) |
-| `APP_NAME` | Variable | Yes | `ShortLink` — default app name, overridable in admin UI |
+| `APP_NAME` | Variable | Yes | `Hop` — default app name, overridable in admin UI |
 | `RP_ID` | Variable | Yes | `yourdomain.com` — WebAuthn relying party ID (domain only) |
 | `APP_ORIGIN` | Variable | Yes | `https://yourdomain.com` — WebAuthn origin (full URL) |
 | `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `sl` (`sl_users`, `sl_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Must equal the GitHub `TABLE_PREFIX` variable (step 3). Set **before** first setup and never change it once data exists. |
@@ -175,7 +175,7 @@ Navigate to your deployed URL and register — the first account is automaticall
 # 1. Create apps/worker/.dev.vars
 cat > apps/worker/.dev.vars << 'EOF'
 APP_URL=http://localhost:8787
-APP_NAME=ShortLink
+APP_NAME=Hop
 RP_ID=localhost
 APP_ORIGIN=http://localhost:5173
 JWT_SECRET=dev-secret-at-least-32-characters-long
@@ -295,7 +295,7 @@ GET /:slug  →  302 to destination URL
 
 ## Environment Variables
 
-All variables and secrets are managed in the **Cloudflare dashboard** (Workers & Pages → shortlink-worker → Settings → Variables and Secrets). `keep_vars = true` in `wrangler.toml` ensures deployments never overwrite them.
+All variables and secrets are managed in the **Cloudflare dashboard** (Workers & Pages → Hop-worker → Settings → Variables and Secrets). `keep_vars = true` in `wrangler.toml` ensures deployments never overwrite them.
 
 | Variable | Type | Required | Description |
 |---|---|---|---|

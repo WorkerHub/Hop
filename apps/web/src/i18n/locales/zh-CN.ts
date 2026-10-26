@@ -91,7 +91,7 @@ export const zhCN: Translations = {
     title: '我的链接',
     titleDesc: '创建并管理你的短链接。',
     createLink: '创建链接',
-    shortLink: '短链接',
+    Hop: '短链接',
     destination: '目标地址',
     expiry: '过期时间',
     searchPlaceholder: '搜索链接...',

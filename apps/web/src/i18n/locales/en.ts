@@ -93,7 +93,7 @@ export const en = {
     title: 'My Links',
     titleDesc: 'Create and manage your short links.',
     createLink: 'Create Link',
-    shortLink: 'Short Link',
+    Hop: 'Short Link',
     destination: 'Destination',
     expiry: 'Expiry',
     searchPlaceholder: 'Search links...',

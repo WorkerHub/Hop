@@ -1,5 +1,5 @@
 -- DO NOT EDIT. Generated from src/lib/migrations.ts (getMigrations("")).
--- Regenerate with: pnpm --filter @shortlink/worker generate:migrations
+-- Regenerate with: pnpm --filter @Hop/worker generate:migrations
 
 CREATE TABLE users (
   id            TEXT    PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -78,7 +78,7 @@ CREATE TABLE settings (
 INSERT INTO settings (key, value) VALUES
   ('registration_enabled',       'true'),
   ('require_email_verification', 'false'),
-  ('app_name',                   'ShortLink'),
+  ('app_name',                   'Hop'),
   ('email_provider',       'resend'),
   ('smtp_host',            ''),
   ('smtp_port',            '587'),

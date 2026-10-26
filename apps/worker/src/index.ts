@@ -89,7 +89,7 @@ app.get('/api/config', async (c) => {
     const row = await c.env.DB.prepare(
       `SELECT value FROM ${tbl(c.env, 'settings')} WHERE key = 'app_name'`,
     ).first<{ value: string }>();
-    appName = row?.value ?? c.env.APP_NAME ?? 'ShortLink';
+    appName = row?.value ?? c.env.APP_NAME ?? 'Hop';
     if (row?.value)
       await setCachedSetting(c.env.LINKS_KV, 'app_name', row.value);
   }

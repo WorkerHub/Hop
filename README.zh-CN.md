@@ -1,4 +1,4 @@
-# ShortLink
+# Hop
 
 [English](./README.md)
 
@@ -43,7 +43,7 @@
 |资源|名称|
 |---|---|
 | WORKERS KV | `LINKS_KV`（可自定义） |
-| D1 SQL databases | `shortlink`（可自定义） |
+| D1 SQL databases | `Hop`（可自定义） |
 
 
 ### 3. 添加 GitHub Actions 密钥与变量
@@ -76,12 +76,12 @@
 
 ### 4. 配置变量和密钥
 
-前往 [Cloudflare 控制台](https://dash.cloudflare.com) → **Workers & Pages → shortlink → Settings → Variables and Secrets** 并添加：
+前往 [Cloudflare 控制台](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets** 并添加：
 
 | 名称 | 类型 | 必填 | 示例 / 说明 |
 |---|---|---|---|
 | `APP_URL` | Variable | 是 | `https://yourdomain.com` — 须与 GitHub 中的 `APP_URL` 变量一致（第 3 步） |
-| `APP_NAME` | Variable | 是 | `ShortLink` — 默认应用名称，可在管理界面覆盖 |
+| `APP_NAME` | Variable | 是 | `Hop` — 默认应用名称，可在管理界面覆盖 |
 | `RP_ID` | Variable | 是 | `yourdomain.com` — WebAuthn 依赖方 ID（仅域名） |
 | `APP_ORIGIN` | Variable | 是 | `https://yourdomain.com` — WebAuthn 来源（完整 URL） |
 | `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `sl`（`sl_users`、`sl_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
@@ -160,7 +160,7 @@ curl -X POST https://your-worker.workers.dev/api/setup \
 # 1. 创建 apps/worker/.dev.vars
 cat > apps/worker/.dev.vars << 'EOF'
 APP_URL=http://localhost:8787
-APP_NAME=ShortLink
+APP_NAME=Hop
 RP_ID=localhost
 APP_ORIGIN=http://localhost:5173
 JWT_SECRET=dev-secret-at-least-32-characters-long
@@ -280,7 +280,7 @@ GET /:slug  →  302 跳转到目标 URL
 
 ## 环境变量
 
-所有变量和密钥均在 **Cloudflare 控制台**（Workers & Pages → shortlink-worker → Settings → Variables and Secrets）中管理。`wrangler.toml` 中的 `keep_vars = true` 确保部署不会覆盖它们。
+所有变量和密钥均在 **Cloudflare 控制台**（Workers & Pages → Hop-worker → Settings → Variables and Secrets）中管理。`wrangler.toml` 中的 `keep_vars = true` 确保部署不会覆盖它们。
 
 | 变量 | 类型 | 必填 | 描述 |
 |---|---|---|---|

@@ -16,7 +16,7 @@ const migrationsDir = join(here, '..', 'migrations');
 
 const HEADER =
   '-- DO NOT EDIT. Generated from src/lib/migrations.ts (getMigrations("")).\n' +
-  '-- Regenerate with: pnpm --filter @shortlink/worker generate:migrations\n';
+  '-- Regenerate with: pnpm --filter @Hop/worker generate:migrations\n';
 
 // The setup route and the prefixed deploy path run getMigrations() directly,
 // which uses idempotent forms (CREATE TABLE IF NOT EXISTS / INSERT OR IGNORE) so

@@ -14,7 +14,7 @@ const scripts = fileURLToPath(new URL('.', import.meta.url));
 const exec = promisify(execFile);
 
 function fixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'shortlink-deploy-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'Hop-deploy-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   // 仅跳过重试等待，不替换 curl 或 jq。
   writeFileSync(join(dir, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
@@ -62,8 +62,8 @@ for (const scenario of [
           : req.url === '/api/config'
             ? scenario.badConfig
               ? '{"error":"database unavailable"}'
-              : '{"appName":"ShortLink"}'
-            : '<html>ShortLink</html>',
+              : '{"appName":"Hop"}'
+            : '<html>Hop</html>',
       );
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

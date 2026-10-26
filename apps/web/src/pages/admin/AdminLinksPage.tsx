@@ -82,7 +82,7 @@ export default function AdminLinksPage() {
                   #
                 </th>
                 <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
-                  {t('links.shortLink')}
+                  {t('links.Hop')}
                 </th>
                 <th className="px-4 py-3 text-left text-caption font-medium tracking-caps text-muted-foreground uppercase">
                   {t('links.destination')}

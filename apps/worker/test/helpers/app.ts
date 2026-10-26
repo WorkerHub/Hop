@@ -37,7 +37,7 @@ export function makeEnv(overrides: Partial<Env> = {}): TestEnv {
     DB: db,
     LINKS_KV: kv,
     ASSETS: { fetch: async () => new Response('assets', { status: 200 }) },
-    APP_NAME: 'ShortLink',
+    APP_NAME: 'Hop',
     APP_URL,
     RP_ID: 'example.com',
     APP_ORIGIN: APP_URL,

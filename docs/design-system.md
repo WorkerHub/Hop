@@ -1,4 +1,4 @@
-# Shortlink Design System — 冻结契约 v1.0
+# Hop Design System — 冻结契约 v1.0
 
 > 本文件是 ONE-88 Stage 2/3/4 的**唯一 token 与视觉方向依据**。命名即接口，冻结后任何变更须经 Mike 裁决。
 > 适用代码基线：React 19 + Vite 8 + Tailwind CSS v4（CSS-first，`@theme` 声明）+ i18n（en / zh-CN）+ ThemeContext 明暗三态（light / dark / system）。

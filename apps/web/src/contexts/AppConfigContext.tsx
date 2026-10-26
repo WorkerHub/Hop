@@ -32,7 +32,7 @@ async function fetchConfig(): Promise<AppConfig> {
 }
 
 export function AppConfigProvider({ children }: { children: React.ReactNode }) {
-  const [appName, setAppName] = useState('ShortLink');
+  const [appName, setAppName] = useState('Hop');
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);

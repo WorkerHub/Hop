@@ -17,16 +17,16 @@ const scripts = fileURLToPath(new URL('.', import.meta.url));
 const worker = fileURLToPath(new URL('../../apps/worker/', import.meta.url));
 
 function fixture(t) {
-  const cwd = mkdtempSync(join(tmpdir(), 'shortlink-d1-test-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'Hop-d1-test-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   writeFileSync(join(cwd, 'package.json'), '{"private":true}');
   writeFileSync(
     join(cwd, 'wrangler.toml'),
-    `name = "shortlink-migration-test"
+    `name = "Hop-migration-test"
 compatibility_date = "2025-04-01"
 [[d1_databases]]
 binding = "DB"
-database_name = "shortlink-test"
+database_name = "Hop-test"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 `,
@@ -285,7 +285,7 @@ test('防静默切换：库中已有 prefixed schema + 显式空前缀 → 中�
 
 // ─── 回归：共享库他表 + 三态边界（ONE-206 修复）─────────────────────────────
 
-test('回归：共享库他表 + shortlink 已有 SL 前缀 → 增量迁移放行，不误杀', (t) => {
+test('回归：共享库他表 + Hop 已有 SL 前缀 → 增量迁移放行，不误杀', (t) => {
   const f = fixture(t);
   const before = f.shared(); // 他应用：bare users + ZETA_*
   f.setup('SL', ['schema_v1', 'schema_v2']);
@@ -297,9 +297,9 @@ test('回归：共享库他表 + shortlink 已有 SL 前缀 → 增量迁移放�
   assert.deepEqual(f.foreignSnapshot(), before);
 });
 
-test('回归：共享库他表 + shortlink 显式空前缀 → 放行，不误判他表为前缀', (t) => {
+test('回归：共享库他表 + Hop 显式空前缀 → 放行，不误判他表为前缀', (t) => {
   const f = fixture(t);
-  // 仅他应用的前缀表，shortlink 自身无任何 schema。
+  // 仅他应用的前缀表，Hop 自身无任何 schema。
   f.query(`CREATE TABLE ZETA_users (id TEXT PRIMARY KEY);
     INSERT INTO ZETA_users VALUES ('zeta-user');
     CREATE TABLE ZETA_links (id TEXT, slug TEXT);

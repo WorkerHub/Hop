@@ -84,7 +84,7 @@ export default function AdminSettingsPage() {
       const s = data.settings;
       setRegistrationEnabled(s.registration_enabled === 'true');
       setRequireEmailVerification(s.require_email_verification === 'true');
-      setAppName(s.app_name ?? 'ShortLink');
+      setAppName(s.app_name ?? 'Hop');
       setEmailProvider((s.email_provider as 'resend' | 'smtp') ?? 'resend');
       // FE-S3: Secrets are masked by the server ("***" when set) — never fill the
       // input with them; only remember whether one is configured.
@@ -302,7 +302,7 @@ export default function AdminSettingsPage() {
             <Input
               value={appName}
               onChange={(e) => setAppName(e.target.value)}
-              placeholder="ShortLink"
+              placeholder="Hop"
               className="max-w-xs"
               required
             />
@@ -385,7 +385,7 @@ export default function AdminSettingsPage() {
                     id="email-from-name"
                     value={emailFromName}
                     onChange={(e) => setEmailFromName(e.target.value)}
-                    placeholder="ShortLink"
+                    placeholder="Hop"
                   />
                 </div>
 

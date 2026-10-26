@@ -17,7 +17,7 @@
       "cache": false
     },
     "deploy": {
-      "dependsOn": ["@shortlink/web#build", "build"],
+      "dependsOn": ["@Hop/web#build", "build"],
       "cache": false,
       "passThroughEnv": ["CLOUDFLARE_API_TOKEN"]
     }

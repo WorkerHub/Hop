@@ -36,13 +36,13 @@ export class TablePrefixConflictError extends Error {
 
 // Tables that are unique to this app across the shared D1 database. Other apps
 // sharing the database (ZETA_*, eNotify_*, …) have none of these three, so their
-// presence under one prefix marks a shortlink schema. Never used for
+// presence under one prefix marks a Hop schema. Never used for
 // single-table matching.
-const SHORTLINK_UNIQUE_SUFFIXES = ['passkeys', 'links', 'totp_used'] as const;
+const Hop_UNIQUE_SUFFIXES = ['passkeys', 'links', 'totp_used'] as const;
 
-// Collects the prefixes under which a shortlink schema appears to be
+// Collects the prefixes under which a Hop schema appears to be
 // initialised: either a prefixed migration-history table
-// (`_<prefix>_schema_migrations`) or the intersection of the shortlink-unique
+// (`_<prefix>_schema_migrations`) or the intersection of the Hop-unique
 // tables under the same prefix.
 function detectPrefixedSchema(names: string[]): string[] {
   const prefixes = new Set<string>();
@@ -66,7 +66,7 @@ function detectPrefixedSchema(names: string[]): string[] {
     suffixes.add(suffix);
   }
   for (const [prefix, suffixes] of byPrefix) {
-    const unique = SHORTLINK_UNIQUE_SUFFIXES as readonly string[];
+    const unique = Hop_UNIQUE_SUFFIXES as readonly string[];
     if (unique.every((s) => suffixes.has(s))) {
       prefixes.add(prefix);
     }
