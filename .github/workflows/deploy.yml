@@ -58,7 +58,7 @@ jobs:
       - name: Inject resource IDs
         env:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
-          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'shortlink' }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
