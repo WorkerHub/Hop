@@ -1,5 +1,5 @@
 import { startAuthentication } from '@simplewebauthn/browser';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { LoginResult } from '@/api/client';
@@ -41,9 +41,22 @@ export default function TwoFactorPage() {
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
 
+  // ONE-579: remember the pending token this page arrived with. `navigate()` in
+  // handleSuccess goes through BrowserRouter, which commits route state inside
+  // React.startTransition (a non-urgent lane), while `clearPendingState()` is an
+  // urgent update. On the urgent re-render `location` is therefore still
+  // /two-factor while `pendingToken` is already null, so the guard below used to
+  // fire and its <Navigate to="/login"> replaced the fresh /dashboard entry ~1ms
+  // later — the user ended up signed in but parked on /login. Keeping the last
+  // held token means the guard only fires when this page never had one (direct
+  // visit / stale tab), never during the teardown after a successful verify.
+  const lastPendingToken = useRef<string | null>(null);
+  if (pendingToken) lastPendingToken.current = pendingToken;
+  const activePendingToken = pendingToken ?? lastPendingToken.current;
+
   // FE-C3: Redirect declaratively — calling navigate() during render is a side
   // effect React may run twice (StrictMode) or warn about.
-  if (!pendingToken)
+  if (!activePendingToken)
     return (
       <Navigate
         to={next ? `/login?next=${encodeURIComponent(next)}` : '/login'}
@@ -59,8 +72,10 @@ export default function TwoFactorPage() {
     setAccessToken(result.accessToken);
     broadcastRefresh();
     await refreshUser();
-    // Leave the page before clearing the pending state: clearing it first
-    // re-renders this page without a pendingToken and flashes /login.
+    // Leave the page before clearing the pending state; the order alone is not
+    // enough (see lastPendingToken above) — the retained token is what keeps the
+    // teardown render from bouncing back to /login while the navigation is still
+    // a pending transition.
     navigate(next ?? '/dashboard', { replace: true });
     clearPendingState();
   };
@@ -69,7 +84,7 @@ export default function TwoFactorPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await authApi.totpVerify(pendingToken, code);
+      const result = await authApi.totpVerify(activePendingToken, code);
       await handleSuccess(result);
     } catch (err) {
       toastApiError(err, t('toast.invalidCode'), t);
@@ -81,7 +96,7 @@ export default function TwoFactorPage() {
   const handleEmailSend = async () => {
     setLoading(true);
     try {
-      await authApi.emailOtpSend(pendingToken);
+      await authApi.emailOtpSend(activePendingToken);
       setOtpSent(true);
       toast.success(t('toast.codeSent'));
     } catch (err) {
@@ -95,7 +110,7 @@ export default function TwoFactorPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await authApi.emailOtpVerify(pendingToken, code);
+      const result = await authApi.emailOtpVerify(activePendingToken, code);
       await handleSuccess(result);
     } catch (err) {
       toastApiError(err, t('toast.invalidCode'), t);
@@ -108,10 +123,10 @@ export default function TwoFactorPage() {
     setLoading(true);
     try {
       const { options, challengeId } =
-        await authApi.passkeyVerifyOptions(pendingToken);
+        await authApi.passkeyVerifyOptions(activePendingToken);
       const response = await startAuthentication({ optionsJSON: options });
       const result = await authApi.passkeyVerify(
-        pendingToken,
+        activePendingToken,
         response,
         challengeId,
       );
