@@ -381,3 +381,223 @@ for (const scenario of [
     assert.doesNotMatch(toml, /_PLACEHOLDER/);
   });
 }
+
+// ─── 改动 E：未配置 APP_URL 时自动推导 workers.dev 地址 ───────────────────────
+
+// 测试用 curl：本地 mock，不访问网络，两个 Cloudflare API 端点与冒烟探测都由
+// 它回答；请求 URL 记进 requests.log，测试据此断言真的请求了推导出的地址。
+function curlMock(
+  dir,
+  {
+    subdomain = 'demo-sub',
+    enabled = true,
+    scriptOk = true,
+    accountOk = true,
+  } = {},
+) {
+  const failure = JSON.stringify({
+    success: false,
+    result: null,
+    errors: [{ code: 10000, message: 'Authentication error' }],
+  });
+  const scriptBody = scriptOk
+    ? JSON.stringify({
+        success: true,
+        result: { enabled, previews_enabled: false },
+        errors: [],
+      })
+    : failure;
+  const accountBody = accountOk
+    ? JSON.stringify({ success: true, result: { subdomain }, errors: [] })
+    : failure;
+  writeFileSync(
+    join(dir, 'curl'),
+    `#!/bin/sh
+out=""; hdr=""; url=""; prev=""
+for a in "$@"; do
+  case "$prev" in
+    -o) out="$a" ;;
+    -D) hdr="$a" ;;
+  esac
+  case "$a" in
+    http*) url="$a" ;;
+  esac
+  prev="$a"
+done
+printf '%s\\n' "$url" >> ${join(dir, 'requests.log')}
+case "$url" in
+  */accounts/*/workers/scripts/*/subdomain) body='${scriptBody}' ;;
+  */accounts/*/workers/subdomain) body='${accountBody}' ;;
+  */api/health) body='{"status":"ok"}' ;;
+  */api/config) body='{"appName":"Hop"}' ;;
+  *) body='<html>Hop</html>' ;;
+esac
+if [ -n "$out" ]; then
+  if [ -n "$hdr" ]; then : > "$hdr"; fi
+  printf '%s' "$body" > "$out"
+  printf '200'
+else
+  printf '%s' "$body"
+fi
+`,
+    { mode: 0o755 },
+  );
+}
+
+function requests(dir) {
+  try {
+    return readFileSync(join(dir, 'requests.log'), 'utf8')
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// 清掉真实环境里可能存在的部署变量，只保留用例显式给的值。
+async function runSmoke(f, extra) {
+  const env = { ...f.env };
+  for (const name of [
+    'APP_URL',
+    'ACCOUNT_ID',
+    'CLOUDFLARE_API_TOKEN',
+    'CHECK_DB',
+  ]) {
+    delete env[name];
+  }
+  Object.assign(env, extra);
+  return exec('bash', [join(scripts, 'smoke-test.sh')], { env }).then(
+    (r) => ({ ok: true, output: r.stdout + r.stderr }),
+    (e) => ({ ok: false, output: `${e.stdout ?? ''}${e.stderr ?? ''}` }),
+  );
+}
+
+const creds = {
+  ACCOUNT_ID: 'a'.repeat(32),
+  CLOUDFLARE_API_TOKEN: 'not-a-real-token',
+};
+
+test('冒烟：未配置 APP_URL 时用 CF API 推导 workers.dev 地址并探测', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir);
+  const result = await runSmoke(f, { ...creds, CHECK_DB: 'true' });
+  assert.equal(result.ok, true, result.output);
+  assert.match(
+    result.output,
+    /Resolved workers\.dev address: https:\/\/hop\.demo-sub\.workers\.dev/,
+  );
+  const urls = requests(f.dir);
+  assert.deepEqual(
+    urls.filter((url) => url.startsWith('https://api.cloudflare.com/')),
+    [
+      `https://api.cloudflare.com/client/v4/accounts/${creds.ACCOUNT_ID}/workers/scripts/hop/subdomain`,
+      `https://api.cloudflare.com/client/v4/accounts/${creds.ACCOUNT_ID}/workers/subdomain`,
+    ],
+    '两个 CF API 端点都应按同一 Worker 名与账户 ID 调用',
+  );
+  assert.deepEqual(
+    urls.filter((url) => !url.startsWith('https://api.cloudflare.com/')),
+    [
+      'https://hop.demo-sub.workers.dev/api/health',
+      'https://hop.demo-sub.workers.dev/',
+      'https://hop.demo-sub.workers.dev/api/config',
+    ],
+    '探测必须打在推导出的 workers.dev 地址上',
+  );
+  assert.doesNotMatch(result.output, /::warning::/);
+});
+
+test('冒烟：APP_URL 已配置时优先探测它，不调用 CF API', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir);
+  const result = await runSmoke(f, {
+    ...creds,
+    APP_URL: 'https://links.example.com/',
+  });
+  assert.equal(result.ok, true, result.output);
+  const urls = requests(f.dir);
+  assert.deepEqual(
+    urls,
+    ['https://links.example.com/api/health', 'https://links.example.com/'],
+    '配了 APP_URL 就只探它（含去除尾部斜杠）',
+  );
+  assert.doesNotMatch(result.output, /Resolved workers\.dev address/);
+});
+
+test('冒烟：workers.dev 被关闭时报「未启用」而不是应用故障', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir, { enabled: false });
+  const result = await runSmoke(f, creds);
+  assert.equal(result.ok, false, result.output);
+  assert.match(
+    result.output,
+    /::error::workers\.dev is not enabled for Worker 'hop'/,
+  );
+  assert.match(result.output, /not an application failure/);
+  // 未启用时不做无意义的探测。
+  assert.deepEqual(
+    requests(f.dir).filter((url) => url.includes('workers.dev')),
+    [],
+  );
+});
+
+test('冒烟：读不到 workers.dev 开关只警告，仍按推导地址探测', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir, { scriptOk: false });
+  const result = await runSmoke(f, creds);
+  assert.equal(result.ok, true, result.output);
+  assert.match(result.output, /::warning::Could not read whether Worker/);
+  assert.deepEqual(
+    requests(f.dir).filter((url) => url.includes('/api/health')),
+    ['https://hop.demo-sub.workers.dev/api/health'],
+  );
+});
+
+test('冒烟：CF API 取不到子域名时报错并提示所需权限', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir, { accountOk: false });
+  const result = await runSmoke(f, creds);
+  assert.equal(result.ok, false, result.output);
+  assert.match(result.output, /workers\/subdomain failed/);
+  assert.match(result.output, /Workers Scripts:Read/);
+  assert.doesNotMatch(result.output, /not-a-real-token/);
+});
+
+test('冒烟：APP_URL 与凭证都没有时报错', async (t) => {
+  const f = fixture(t);
+  curlMock(f.dir);
+  const result = await runSmoke(f, {});
+  assert.equal(result.ok, false, result.output);
+  assert.match(result.output, /Neither vars\.APP_URL nor/);
+  assert.deepEqual(requests(f.dir), [], '缺少凭证时不应发出任何请求');
+});
+
+test('deploy.yml：Smoke 步给自动推导补上 token 与账户 ID', () => {
+  const lines = readFileSync(
+    join(repoRoot, '.github', 'workflows', 'deploy.yml'),
+    'utf8',
+  ).split('\n');
+  const start = lines.findIndex((line) => line.trim() === '- name: Smoke test');
+  assert.notEqual(start, -1, 'deploy.yml 缺少 Smoke 步');
+  // 到下一个步骤声明为止，就是 Smoke 步本身的整段内容。
+  const end = lines.findIndex(
+    (line, i) => i > start && /^\s*- (name|uses):/.test(line),
+  );
+  const smoke = lines.slice(start, end === -1 ? lines.length : end).join('\n');
+  assert.match(
+    smoke,
+    /^ {10}APP_URL: \$\{\{ vars\.APP_URL \}\}$/m,
+    'APP_URL 仍是可选变量，原样传入',
+  );
+  assert.match(
+    smoke,
+    /^ {10}ACCOUNT_ID: \$\{\{ secrets\.[A-Z0-9_]+ \}\}$/m,
+    '自动推导需要账户 ID',
+  );
+  assert.match(
+    smoke,
+    /^ {10}CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}$/m,
+    '自动推导需要 API token',
+  );
+  assert.match(smoke, /^ {8}run: bash \.github\/scripts\/smoke-test\.sh$/m);
+});
