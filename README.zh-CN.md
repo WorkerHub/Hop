@@ -50,15 +50,16 @@
 
 在你的 GitHub 仓库中前往 **Settings → Secrets and variables → Actions** 
 
-添加 Repository secrets（deploy 工作流读取；其中只有 `JWT_SECRET`、`SETUP_SECRET` 两项会经 CI 以 `--secrets-file` 上传为 Cloudflare Secret）：
+添加 Repository secrets（deploy 工作流读取；`JWT_SECRET`、`SETUP_SECRET`、`TOTP_ENCRYPTION_KEY` 三项均经 CI 以 `--secrets-file` 上传为 Cloudflare Secret，因此一律不在 Cloudflare 控制台配置）：
 
 | 密钥 | 值 |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | 进入[User API Tokens](https://dash.cloudflare.com/profile/api-tokens)页面，使用 **Edit Cloudflare Workers** 模板创建的 API 令牌。需具备目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。 |
+| `CLOUDFLARE_API_TOKEN` | 进入[User API Tokens](https://dash.cloudflare.com/profile/api-tokens)页面，使用 **Edit Cloudflare Workers** 模板创建的 API 令牌。需具备目标 D1 的编辑权限、Worker 的编辑/版本读取权限，以及 Workers Scripts:Read（未配 `APP_URL` 时 smoke test 要读 workers.dev 子域名）。 |
 | `JWT_SECRET` | 任意长度 ≥ 32 字符的随机字符串。CI 经 `--secrets-file` 上传为 Cloudflare Secret。 |
 | `SETUP_SECRET` | `openssl rand -hex 24`。CI 经 `--secrets-file` 上传为 Cloudflare Secret，用于 setup/迁移。 |
+| `TOTP_ENCRYPTION_KEY` | `openssl rand -hex 32`。CI 经 `--secrets-file` 上传为 Cloudflare Secret；加密 TOTP 凭据，轮换会使已绑定的 TOTP 全部失效。该值缺失或为空时部署直接失败关闭。 |
 
-> **存量部署迁移到 CI** — GitHub 中的 `JWT_SECRET`、`SETUP_SECRET` 值必须与 Worker 上**已有的** Cloudflare Secret **同值**：请填入现有值，切勿生成新值替代，否则 CI 会用不同值覆盖线上 Secret。
+> **存量部署迁移到 CI** — GitHub 中的 `JWT_SECRET`、`SETUP_SECRET`、`TOTP_ENCRYPTION_KEY` 值必须与 Worker 上**已有的** Cloudflare Secret **同值**：请填入现有值，切勿生成新值替代，否则 CI 会用不同值覆盖线上 Secret（对 `TOTP_ENCRYPTION_KEY` 而言，换值会让所有已绑定的 TOTP 无法解密）。值搬进 GitHub 后即由 CI 接管：请删掉控制台那份，因为控制台上的改动下次部署会被覆回。
 
 
 添加 Repository variables（deploy 工作流读取）：
@@ -69,41 +70,49 @@
 | `KV_NAMESPACE_ID`| 上一步中的 WORKERS KV ID |
 | `D1_DATABASE_ID` | 上一步中的 D1 database ID |
 | `D1_DATABASE_NAME` | （可选）仅当上一步自定义了 D1 数据库名称时才需配置为对应名称，否则无须配置。 |
-| `TABLE_PREFIX` | （可选）production 环境变量。CI 中保留字 `none` 表示显式无前缀。必须与 Worker 的同名明文变量一致（见第 4 步）。 |
-| `APP_URL` | 生产 URL，供 smoke test 使用（见第 6 步）。与第 4 步中同名的 Worker 变量无关——Worker 已不再需要它。 |
+| `TABLE_PREFIX` | （可选）三态表前缀，同时是该 Worker `TABLE_PREFIX` 绑定的**唯一真源**：未设置或为空 → 默认 `hop`；保留字 `none` → 显式无前缀；其他值 → 原值。每次部署都会把它写入 Worker 绑定——不要在 Cloudflare 控制台配置它（见第 4 步）。 |
+| `APP_URL` | （可选）smoke test 探测的生产 URL（见第 6 步）。未配置时 smoke test 会自动解析并探测 Worker 的 workers.dev 地址。与第 4 步中同名的 Worker 变量无关——Worker 已不再需要它。 |
 
-部署工作流（`.github/workflows/deploy.yml`）在部署时通过 `sed` 将这些资源 ID 注入 `wrangler.toml`，因此 ID 不会提交到仓库。
+部署工作流（`.github/workflows/deploy.yml`）在部署时通过 `sed` 将这些资源 ID 与解析后的 `TABLE_PREFIX` 注入 `wrangler.toml`，因此 ID 不会提交到仓库。资源与上述值就位后，部署本身就是全新安装的全部步骤：Worker 不存在时自动创建、建表、写入 `TABLE_PREFIX` 绑定，全程无需 Cloudflare 控制台操作（见第 5 步）。
 
-### 4. 配置变量和密钥
+### 4. 可选的 Worker 变量
 
-前往 [Cloudflare 控制台](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets** 并添加：
+**无需任何控制台操作。** `TABLE_PREFIX` 与三把运行时密钥（`JWT_SECRET`、`SETUP_SECRET`、`TOTP_ENCRYPTION_KEY`）均来自第 3 步的 GitHub 值，由部署工作流每次运行时写入 Worker。请**不要**在 [Cloudflare 控制台](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets** 中创建或修改它们：有前缀时，在控制台改 `TABLE_PREFIX` 会让下次部署的迁移守卫中止，直到 GitHub 与 Worker 两侧重新一致（而那次部署本来也会按 GitHub 变量把它覆回）；与控制台同名的 Secret 也会在下次部署时被 CI 覆盖。
+
+以下变量可选地在 Worker 本体上配置——CI 不碰它们，`wrangler.toml` 中的 `keep_vars = true` 会保证跨部署保留：
 
 | 名称 | 类型 | 必填 | 示例 / 说明 |
 |---|---|---|---|
 | `APP_URL` | Variable | 否 | 规范基础 URL（例如 `https://yourdomain.com`）。可选——未配置时按每个请求的 origin 推导。仅当需要固定一个与客户端实际访问地址不同的 URL 时才配置。 |
 | `RP_ID` | Variable | 否 | WebAuthn 依赖方 ID（仅域名）。可选——未配置时按请求 hostname 推导。 |
 | `APP_ORIGIN` | Variable | 否 | WebAuthn 来源（完整 URL）。可选——未配置时按请求 origin 推导。 |
-| `TABLE_PREFIX` | Variable | 否 | 三态表前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；配置自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；显式配置为空字符串 → 无前缀（部署者自担撞表风险）。须与 GitHub 中的 `TABLE_PREFIX` 变量一致（第 3 步）。必须在**首次** setup 前设置，一旦有数据后不得更改。 |
-| `TOTP_ENCRYPTION_KEY` | Secret | 是 | `openssl rand -hex 32` — 加密 TOTP 凭据，轮换会使已绑定的 TOTP 全部失效。这是**唯一**在 Cloudflare 控制台配置的 Secret，不经 CI。 |
 
-> `wrangler.toml` 中设置了 `keep_vars = true`，因此部署不会覆盖这些值。
->
-> `JWT_SECRET` 与 `SETUP_SECRET` **不在此处配置** — 由 CI 从第 3 步添加的 GitHub Secret 上传。只有 `TOTP_ENCRYPTION_KEY` 仅存在于 Cloudflare 控制台、从不经 CI。
+> `TABLE_PREFIX` 故意**不列入上表**：它由部署统一托管（第 3 步）。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；自定义值 → 该值（保留大小写，剔除 `[^a-zA-Z0-9_]`）；GitHub 中为 `none` → 显式空字符串、无前缀（部署者自担撞表风险）。请在**首次**部署前定下，一旦有数据后不得更改。
 >
 > `APP_URL` / `RP_ID` / `APP_ORIGIN` 均为可选：未配置时 Worker 按请求推导（见[环境变量](#环境变量)）。显式配置始终优先，因此已配置这三项的存量部署行为与改前完全一致。`APP_NAME` **不再是环境变量**——应用名称唯一来源是管理面设置 `app_name`（默认 `Hop`）。
 >
 > `RP_ID` / `APP_ORIGIN` 是 WebAuthn 通行密钥的依赖方标识。若配置，其值**严禁变更**——一旦变更将导致所有用户的通行密钥失效。若未配置，rpID 按用户实际访问的 hostname 推导，凭据仍按域名绑定：经正式自定义域名访问与原显式配置等价；经其他域名（例如 `*.workers.dev`）访问会得到不同的 rpID，从而形成不同的通行密钥作用域——这是多域名部署的固有行为，不是本次变更的回归。
 >
-> GitHub 中的 `TABLE_PREFIX` 变量（第 3 步）仍供前缀解析读取，需与 Worker 的同名变量保持同值。
+> 若某个旧部署的 `TOTP_ENCRYPTION_KEY` 原本建在控制台：先把同一个值填进 GitHub Secret `TOTP_ENCRYPTION_KEY`（第 3 步）——换成别的值会让所有已绑定的 TOTP 无法解密——再删掉控制台那份。
 >
 > 邮件提供商设置（Resend API 密钥、SMTP 凭据等）在首次登录后通过**管理界面**配置 — 无需在 Cloudflare 控制台中配置。
 
 
 ### 5. 构建并部署
 
-进入 Github Actions → Deploy →  点击 右侧 Run workflow，手动触发部署。
+进入 Github Actions → Deploy → 点击右侧 Run workflow，手动触发部署（推送或合并到 `main` 后，CI 通过也会自动部署）。
 
-这将会把代码部署到Cloudflare的Workers中。
+全新安装点一次就够了，默认前缀与自定义前缀皆然：
+
+- wrangler 上传代码，Worker 不存在时自动创建；
+- 迁移在上传前执行，按解析出的前缀建表；
+- 上传的版本带有 CI 按 GitHub 变量写入的 `TABLE_PREFIX` 绑定；
+- 随后工作流通过 Cloudflare API 核对这个版本承接 100% 生产流量且前缀一致，再由 smoke test 探测部署后的 URL。
+
+仍需人工的只有两件，且都与部署成败无关：
+
+- **自定义域名** — 想用时何时绑都行（Workers & Pages → Hop → Settings → Domains & Routes）。在此之前部署在 workers.dev 地址上可正常访问，`APP_URL` 未配时 smoke test 自动探测该地址。
+- **`APP_URL`** — 域名绑好后可选地把 GitHub 变量（第 3 步）设为生产地址，让 smoke test 探测真实生产入口。
 
 
 ### 6. 运行数据库迁移
@@ -117,10 +126,20 @@ GitHub Actions 无法区分「未设置的 `vars.TABLE_PREFIX`」与「空字符
 
 > **升级警告** — 从未配置过前缀的旧部署使用无前缀表。若解析出的前缀与库中已初始化的前缀不一致，setup 与迁移会**中止报错**，而不是静默切换到另一套（通常是空的）表。升级前请先把 `TABLE_PREFIX` 配成原值（保持无前缀则配置 `TABLE_PREFIX=''`，CI 中为 `TABLE_PREFIX=none`）。在 `sl` → `hop` 默认值变更前依赖默认前缀（`sl_users` 等）的部署，需显式配置 `TABLE_PREFIX=sl`。
 
-使用前缀时，在 GitHub 的 **production environment → Variables** 中设置
-`TABLE_PREFIX`，与 Cloudflare Worker 的同名**明文变量**完全一致（例如 `SL`，仅字母、数字和下划线）。
-不要把它设为 Secret，也不要在已有数据后更换前缀。GitHub 中的 `APP_URL` 也必须指向生产地址。
-现有 `CLOUDFLARE_API_TOKEN` 需要有目标 D1 的编辑权限和 Worker 的编辑/版本读取权限。
+使用自定义前缀时，在 GitHub 的 **production environment → Variables** 中设置 `TABLE_PREFIX`
+（例如 `SL`，仅字母、数字和下划线）——这是它唯一需要配置的地方。部署会把它写入 Worker 的
+`TABLE_PREFIX` **明文绑定**，因此不要在 Cloudflare 控制台新增或修改该绑定，也不要把它设为 Secret
+（Secret 的值读不回来，无法比对），更不要在已有数据后更换前缀。
+
+由于该绑定由部署托管，有前缀时迁移守卫（在代码上传**之前**运行）会把现役 Worker 正在使用的前缀与
+GitHub 变量比对，不一致即中止：GitHub 值写错时永远不可能迁移到别的应用的表；控制台上误改也会在
+生效前被拦下（而且下次部署本来就会按 GitHub 变量把它覆回）。若 Worker 已不存在、但库里的
+`<prefix>_` 表与 `_<prefix>_schema_migrations` 账本还在，账本本身就是这些表属于本应用的凭据，
+守卫会放行并让本次部署重建 Worker；带前缀的表**没有**该账本时仍然中止。
+
+`APP_URL` 为可选——配置了就探它，未配置则自动解析并探测 Worker 自己的 workers.dev 地址。
+`CLOUDFLARE_API_TOKEN` 需要有目标 D1 的编辑权限、Worker 的编辑/版本读取权限，以及
+Workers Scripts:Read（供上述 workers.dev 解析）。
 
 无需在每次部署后调用 setup 接口。手动部署或应急操作仍可通过 `POST` 请求触发，
 密钥放在 JSON body 中（旧的 `X-Setup-Secret` 请求头仍兼容，密钥不再通过 URL 传递）：
@@ -283,17 +302,17 @@ GET /:slug  →  302 跳转到目标 URL
 
 ## 环境变量
 
-所有变量和密钥均在 **Cloudflare 控制台**（Workers & Pages → Hop-worker → Settings → Variables and Secrets）中管理。`wrangler.toml` 中的 `keep_vars = true` 确保部署不会覆盖它们。
+`TABLE_PREFIX` 与三把密钥均来自本仓库的 GitHub Secrets/Variables（第 3 步），由部署工作流写入 Worker——不要在 Cloudflare 控制台配置它们。可选变量 `APP_URL` / `RP_ID` / `APP_ORIGIN` 是唯一直接在 Worker 本体上配置的项（Workers & Pages → Hop → Settings → Variables and Secrets），`wrangler.toml` 中的 `keep_vars = true` 确保跨部署保留。
 
-| 变量 | 类型 | 必填 | 描述 |
-|---|---|---|---|
-| `APP_URL` | 变量 | 否 | 规范基础 URL（例如 `https://go.example.com`）。可选——未配置时用请求 origin（用于 CORS、HSTS、refresh cookie 的 `Secure` 标记与 `/404` 跳转）。 |
-| `RP_ID` | 变量 | 否 | WebAuthn 依赖方 ID（不含协议的域名）。可选——未配置时用请求 hostname。 |
-| `APP_ORIGIN` | 变量 | 否 | WebAuthn 来源（完整 URL）。可选——未配置时用请求 origin。 |
-| `TABLE_PREFIX` | 变量 | 否 | 所有 D1 表名的三态前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；自定义值 → 该值（保留大小写）；显式空 → 无前缀。在第一次迁移前设置一次 — 之后更改需手动重命名所有表。只使用字母数字和下划线字符。 |
-| `JWT_SECRET` | 密钥 | 是 | HS256 签名密钥，≥ 32 字符 |
-| `TOTP_ENCRYPTION_KEY` | 密钥 | 是 | 来自 `openssl rand -hex 32` 的十六进制字符串 |
-| `SETUP_SECRET` | 密钥 | 是 | 通过 HTTP 触发数据库迁移的密钥路径 |
+| 变量 | 类型 | 必填 | 来源 | 描述 |
+|---|---|---|---|---|
+| `APP_URL` | 变量 | 否 | Worker（控制台） | 规范基础 URL（例如 `https://go.example.com`）。可选——未配置时用请求 origin（用于 CORS、HSTS、refresh cookie 的 `Secure` 标记与 `/404` 跳转）。 |
+| `RP_ID` | 变量 | 否 | Worker（控制台） | WebAuthn 依赖方 ID（不含协议的域名）。可选——未配置时用请求 hostname。 |
+| `APP_ORIGIN` | 变量 | 否 | Worker（控制台） | WebAuthn 来源（完整 URL）。可选——未配置时用请求 origin。 |
+| `TABLE_PREFIX` | 变量 | 否 | GitHub `TABLE_PREFIX` → CI | 所有 D1 表名的三态前缀。未配置 → 默认 `hop`（`hop_users`、`hop_links` 等）；自定义值 → 该值（保留大小写）；GitHub 中为 `none` → 显式空、无前缀。在第一次部署前设定一次 — 之后更改需手动重命名所有表。只使用字母数字和下划线字符。 |
+| `JWT_SECRET` | 密钥 | 是 | GitHub Secret → CI | HS256 签名密钥，≥ 32 字符 |
+| `TOTP_ENCRYPTION_KEY` | 密钥 | 是 | GitHub Secret → CI | 来自 `openssl rand -hex 32` 的十六进制字符串 |
+| `SETUP_SECRET` | 密钥 | 是 | GitHub Secret → CI | 通过 HTTP 触发数据库迁移的密钥路径 |
 
 ---
 
