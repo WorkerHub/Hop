@@ -210,17 +210,56 @@ for (const scenario of [
     env: '',
     ok: false,
   },
+  {
+    // 密钥闸门：版本上没有 secret_text 的 JWT_SECRET 必须失败。
+    name: '缺 JWT_SECRET 的 secret 绑定必须失败',
+    version: 'uploaded',
+    percentage: 100,
+    prefix: 'hop',
+    env: 'hop',
+    secretBindings: [
+      '{"name":"SETUP_SECRET","type":"secret_text"}',
+      '{"name":"TOTP_ENCRYPTION_KEY","type":"secret_text"}',
+    ],
+    expectError:
+      '::error::.*no secret_text binding for: JWT_SECRET\\. The deploy',
+    ok: false,
+  },
+  {
+    // 有同名绑定但不是 secret_text（例如在控制台手工加成了普通变量）也算缺。
+    name: 'TOTP_ENCRYPTION_KEY 只是 plain_text 必须失败',
+    version: 'uploaded',
+    percentage: 100,
+    prefix: 'hop',
+    env: 'hop',
+    secretBindings: [
+      '{"name":"JWT_SECRET","type":"secret_text"}',
+      '{"name":"SETUP_SECRET","type":"secret_text"}',
+      '{"name":"TOTP_ENCRYPTION_KEY","type":"plain_text","text":""}',
+    ],
+    expectError: '::error::.*TOTP_ENCRYPTION_KEY',
+    ok: false,
+  },
 ]) {
   test(`控制面：${scenario.name}`, (t) => {
     const f = fixture(t);
+    // 默认：三个运行时密钥都作为 secret_text 绑在版本上（就是修复后
+    // --secrets-file 生效的模样）；负例按需换成缺项 / 错类型的列表。
+    const secretBindings = (
+      scenario.secretBindings ?? [
+        '{"name":"JWT_SECRET","type":"secret_text"}',
+        '{"name":"SETUP_SECRET","type":"secret_text"}',
+        '{"name":"TOTP_ENCRYPTION_KEY","type":"secret_text"}',
+      ]
+    ).join(',');
     writeFileSync(
       join(f.dir, 'pnpm'),
       `#!/bin/sh
 case "$*" in
   'exec wrangler deployments status --json')
     printf '%s\\n' '{"versions":[{"version_id":"${scenario.version}","percentage":${scenario.percentage}}]}' ;;
-  'exec wrangler versions view uploaded --json')
-    printf '%s\\n' '{"id":"uploaded","resources":{"bindings":[{"name":"TABLE_PREFIX","type":"plain_text","text":"${scenario.prefix}"}]}}' ;;
+  'exec wrangler versions view uploaded --json'|'exec wrangler versions view uploaded --name hop --json')
+    printf '%s\\n' '{"id":"uploaded","resources":{"bindings":[{"name":"TABLE_PREFIX","type":"plain_text","text":"${scenario.prefix}"},${secretBindings}]}}' ;;
   *) exit 99 ;;
 esac
 `,
@@ -246,8 +285,21 @@ esac
         stdout.includes(`TABLE_PREFIX: ${scenario.prefix || '<none>'}`),
         stdout,
       );
+      assert.match(stdout, /Secret bindings on version uploaded/);
     } else {
-      assert.throws(run, /Command failed/);
+      let thrown = null;
+      try {
+        run();
+      } catch (e) {
+        thrown = e;
+      }
+      assert.ok(thrown, '必须失败');
+      const output = `${thrown.stdout ?? ''}${thrown.stderr ?? ''}`;
+      assert.match(
+        output,
+        new RegExp(scenario.expectError ?? '::error::'),
+        output,
+      );
     }
   });
 }
@@ -700,5 +752,32 @@ test('deploy.yml：Write secrets file 步从仓库 Secret 注入 TOTP_ENCRYPTION
     step,
     /for name in JWT_SECRET SETUP_SECRET TOTP_ENCRYPTION_KEY; do/,
     '必填校验须覆盖该键',
+  );
+});
+
+// ─── 改动 B：Deploy 步让 --secrets-file 真正到达 Wrangler ─────────────────────
+
+test('deploy.yml：Deploy 步直接调 Wrangler 传 --secrets-file', () => {
+  const lines = readFileSync(
+    join(repoRoot, '.github', 'workflows', 'deploy.yml'),
+    'utf8',
+  ).split('\n');
+  const start = lines.findIndex((line) => line.trim() === '- name: Deploy');
+  assert.notEqual(start, -1, 'deploy.yml 缺少 Deploy 步');
+  const end = lines.findIndex(
+    (line, i) => i > start && /^\s*- (name|uses):/.test(line),
+  );
+  const step = lines.slice(start, end === -1 ? lines.length : end).join('\n');
+  // `pnpm run deploy -- --secrets-file` 会把字面 `--` 转发给脚本，Wrangler 的
+  // yargs 随后把其后的参数当位置参数丢掉，密钥因此从未上传（ONE-563 根因）。
+  assert.doesNotMatch(
+    step,
+    /pnpm run deploy --\s/,
+    '不能再经过 pnpm 的 `--` 转发',
+  );
+  assert.match(
+    step,
+    /run: pnpm exec wrangler deploy --secrets-file "\$RUNNER_TEMP\/secrets\.json"/,
+    'Deploy 步必须由 Wrangler 自己收到 --secrets-file',
   );
 });
