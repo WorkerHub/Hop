@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -72,8 +73,57 @@ migrations_dir = "migrations"
         sql,
       ]),
     ).map((r) => r.results);
-  const script = (name, prefix) =>
-    run('bash', [join(scripts, name)], { TABLE_PREFIX: prefix });
+  const script = (name, prefix, extraEnv = {}) =>
+    run('bash', [join(scripts, name)], {
+      TABLE_PREFIX: prefix,
+      ...extraEnv,
+    });
+  // 控制面替身（沿用 test-deploy-checks.mjs 的 pnpm 替身做法）：只接管 wrangler 的
+  // `deployments status` / `versions view`，其余调用原样交给真实 pnpm，并把
+  // `--remote` 改写为 `--local`，让 D1 查询依然落到本 fixture 的本地库。
+  // 用于跑 D1_LOCATION=remote 分支（Worker 存在与否的分情形判定）。
+  const mockControlPlane = ({ status, prefix = 'SL' }) => {
+    const bin = join(cwd, 'mock-bin');
+    mkdirSync(bin, { recursive: true });
+    const realPnpm = execFileSync('bash', ['-c', 'command -v pnpm'], {
+      encoding: 'utf8',
+    }).trim();
+    const statusCall =
+      status === 'missing'
+        ? `  printf '%s\\n' '{"error":{"code":10007,"text":"workers.api.error.script_not_found"}}' >&2
+  exit 1`
+        : `  printf '%s\\n' '${JSON.stringify({
+            versions: [{ version_id: 'live-version', percentage: 100 }],
+          })}'
+  exit 0`;
+    const bindings =
+      prefix === undefined
+        ? []
+        : [{ name: 'TABLE_PREFIX', type: 'plain_text', text: prefix }];
+    writeFileSync(
+      join(bin, 'pnpm'),
+      `#!/usr/bin/env bash
+if [[ "$*" == 'exec wrangler deployments status --json' ]]; then
+${statusCall}
+fi
+if [[ "$1 $2 $3" == 'exec wrangler versions' ]]; then
+  printf '%s\\n' '${JSON.stringify({
+    id: 'live-version',
+    resources: { bindings },
+  })}'
+  exit 0
+fi
+args=()
+for arg in "$@"; do
+  [[ "$arg" == --remote ]] && arg=--local
+  args+=("$arg")
+done
+exec '${realPnpm}' "\${args[@]}"
+`,
+      { mode: 0o755 },
+    );
+    return { PATH: `${bin}:${process.env.PATH}` };
+  };
   const setup = (prefix, names) => {
     query(
       `${createMigrationsTableSql(prefix)};${getMigrations(prefix)
@@ -138,6 +188,7 @@ migrations_dir = "migrations"
     run,
     query,
     script,
+    mockControlPlane,
     setup,
     shared,
     wranglerHistory,
@@ -381,3 +432,111 @@ test('回归：d1_migrations 含本应用迁移文件名 + 非空前缀 → 仍�
   );
   assert.deepEqual(f.foreignSnapshot(), before);
 });
+
+// ─── 改动 B：Worker 不存在（deployments status 失败）分情形放行 ───────────────
+
+// 用 pnpm 替身让 `wrangler deployments status` 报 10007（Worker 不存在），
+// D1 查询仍打到本地库，于是走真实的 remote 分支判定。
+for (const scenario of [
+  {
+    name: '无表无历史 + 自定义前缀 → 放行建表（既有行为）',
+    prepare: () => {},
+    ok: true,
+  },
+  {
+    name: '带前缀表 + 有账本历史 → 放行（改动 B 新行为）',
+    prepare: (f) => f.setup('SL', ['schema_v1']),
+    ok: true,
+  },
+  {
+    name: '带前缀表 + 无账本历史 → 仍拒绝（守卫底线）',
+    prepare: (f) => f.query('CREATE TABLE SL_users (id TEXT)'),
+    ok: false,
+  },
+]) {
+  test(`Worker 不存在（deployments status 失败）：${scenario.name}`, (t) => {
+    const f = fixture(t);
+    const before = f.shared();
+    scenario.prepare(f);
+    const run = () =>
+      f.script('d1-prefixed-migrations.sh', 'SL', {
+        D1_LOCATION: 'remote',
+        ...f.mockControlPlane({ status: 'missing' }),
+      });
+
+    if (!scenario.ok) {
+      assert.throws(run, (err) =>
+        /refusing to migrate existing SL_ tables/.test(err.stdout ?? ''),
+      );
+      // 拒绝时库里不得留下任何本应用的痕迹。
+      assert.deepEqual(
+        f.query(
+          `SELECT name FROM sqlite_master WHERE type = 'table'
+            AND (name GLOB 'SL_*' OR name GLOB '_SL_*') AND name != 'SL_users'`,
+        )[0],
+        [],
+      );
+      assert.deepEqual(f.foreignSnapshot(), before);
+      return;
+    }
+
+    const output = run();
+    assert.match(output, /::warning::Could not read the deployed Worker/);
+    assert.doesNotMatch(output, /::error::/);
+    assert.deepEqual(
+      f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
+      [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+    );
+    f.assertOwnIndexes('SL');
+    assert.deepEqual(f.foreignSnapshot(), before);
+    // 幂等续跑：第二次只剩空计划。
+    assert.match(
+      f.script('d1-prefixed-migrations.sh', 'SL', {
+        D1_LOCATION: 'remote',
+        ...f.mockControlPlane({ status: 'missing' }),
+      }),
+      /Planned migrations: none/,
+    );
+  });
+}
+
+// 回归：deployments status 成功时的现役版本前缀比对逻辑不变。
+for (const scenario of [
+  { name: '现役前缀与 GitHub 变量一致 → 放行', live: 'SL', ok: true },
+  { name: '现役前缀与 GitHub 变量不一致 → 拒绝', live: 'ZETA', ok: false },
+]) {
+  test(`Worker 存在（deployments status 成功）：${scenario.name}`, (t) => {
+    const f = fixture(t);
+    const before = f.shared();
+    const run = () =>
+      f.script('d1-prefixed-migrations.sh', 'SL', {
+        D1_LOCATION: 'remote',
+        ...f.mockControlPlane({ status: 'live', prefix: scenario.live }),
+      });
+
+    if (!scenario.ok) {
+      assert.throws(run, (err) =>
+        new RegExp(
+          `Deployed Worker version live-version uses TABLE_PREFIX='${scenario.live}'`,
+        ).test(err.stdout ?? ''),
+      );
+      assert.deepEqual(
+        f.query(
+          `SELECT name FROM sqlite_master WHERE type = 'table'
+            AND (name GLOB 'SL_*' OR name GLOB '_SL_*')`,
+        )[0],
+        [],
+      );
+      assert.deepEqual(f.foreignSnapshot(), before);
+      return;
+    }
+
+    assert.match(run(), /Deployed Worker uses TABLE_PREFIX=SL/);
+    assert.deepEqual(
+      f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
+      [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+    );
+    f.assertOwnIndexes('SL');
+    assert.deepEqual(f.foreignSnapshot(), before);
+  });
+}

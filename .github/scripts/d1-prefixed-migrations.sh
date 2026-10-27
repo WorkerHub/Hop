@@ -13,6 +13,11 @@
 #     mistyped GitHub variable can't migrate another app's tables;
 #   - prefixed tables without a migration history are never touched.
 #
+# When the deployed Worker can't be read (it may not exist at all, e.g. after it
+# was deleted), `_<prefix>_schema_migrations` itself proves that the prefixed
+# tables belong to this app, so the run continues; prefix tables without that
+# ledger keep failing.
+#
 # D1_LOCATION=local targets the local D1 database instead (for testing this
 # script); the deployed-Worker check is skipped then.
 set -euo pipefail
@@ -91,7 +96,10 @@ if [[ "$location" == remote ]]; then
       fi
     done
     echo "Deployed Worker uses TABLE_PREFIX=$prefix (version(s): $(tr '\n' ' ' <<<"$versions"))."
-  elif [[ "$has_history" == false && -z "$own_tables" ]]; then
+  elif [[ "$has_history" == true ]]; then
+    cat "$err" >&2
+    echo "::warning::Could not read the deployed Worker (it may not exist yet, e.g. after it was deleted). $history exists, so the ${prefix}_ tables belong to this app; continuing with the idempotent migration run."
+  elif [[ -z "$own_tables" ]]; then
     cat "$err" >&2
     echo "::warning::Could not read the deployed Worker (first deploy?). The database has no ${prefix}_ tables yet, so creating them is safe."
   else
