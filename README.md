@@ -50,15 +50,16 @@ Create the following resources in Cloudflare, please note their IDs for the next
 
 In your GitHub repository go to **Settings → Secrets and variables → Actions** and add:
 
-Repository secrets (the deploy workflow reads these; only `JWT_SECRET` and `SETUP_SECRET` are uploaded to Cloudflare as CF Secrets via `--secrets-file`):
+Repository secrets (the deploy workflow reads these; `JWT_SECRET`, `SETUP_SECRET` and `TOTP_ENCRYPTION_KEY` are uploaded to Cloudflare as CF Secrets via `--secrets-file`, so they are never configured in the Cloudflare dashboard):
 
 | Secret | Value |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | API token created with the **Edit Cloudflare Workers** template from the [User API Tokens](https://dash.cloudflare.com/profile/api-tokens) page. Needs edit access to the D1 database and edit/version-read access to the Worker. |
+| `CLOUDFLARE_API_TOKEN` | API token created with the **Edit Cloudflare Workers** template from the [User API Tokens](https://dash.cloudflare.com/profile/api-tokens) page. Needs edit access to the D1 database, edit/version-read access to the Worker, and Workers Scripts:Read (the smoke test reads the workers.dev subdomain when `APP_URL` is unset). |
 | `JWT_SECRET` | Any random string ≥ 32 characters. CI uploads it as a Cloudflare Secret via `--secrets-file`. |
 | `SETUP_SECRET` | `openssl rand -hex 24`. CI uploads it as a Cloudflare Secret via `--secrets-file`; used for setup/migrations. |
+| `TOTP_ENCRYPTION_KEY` | `openssl rand -hex 32`. CI uploads it as a Cloudflare Secret via `--secrets-file`; encrypts TOTP credentials, so rotating it invalidates every bound TOTP. The deploy fails closed when it is empty or missing. |
 
-> **Migrating an existing deployment to CI** — the GitHub `JWT_SECRET` and `SETUP_SECRET` values must be the **same values** as the Cloudflare Secrets already configured on the Worker. Fill in the existing values; never generate new ones to replace them, or CI will overwrite the live secrets with different values.
+> **Migrating an existing deployment to CI** — the GitHub `JWT_SECRET`, `SETUP_SECRET` and `TOTP_ENCRYPTION_KEY` values must be the **same values** as the Cloudflare Secrets already configured on the Worker. Fill in the existing values; never generate new ones to replace them, or CI will overwrite the live secrets with different values (for `TOTP_ENCRYPTION_KEY` that would invalidate every bound TOTP). Once the values live in GitHub, CI owns them: delete the Cloudflare-side copies, because a console edit is overwritten by the next deploy anyway.
 
 Repository variables (the deploy workflow reads these):
 
@@ -68,40 +69,48 @@ Repository variables (the deploy workflow reads these):
 | `KV_NAMESPACE_ID` | Workers KV ID from the previous step |
 | `D1_DATABASE_ID` | D1 database ID from the previous step |
 | `D1_DATABASE_NAME` | (Optional) Only needed if you customized the D1 database name in the previous step; otherwise, no configuration is required |
-| `TABLE_PREFIX` | (Optional) Production environment variable. The CI reserved word `none` means explicit no prefix. Must equal the Worker's `TABLE_PREFIX` plain-text variable (step 4). |
-| `APP_URL` | Production URL used by the smoke test (step 6). Independent of the optional Worker variable of the same name (step 4) — the Worker no longer needs it. |
+| `TABLE_PREFIX` | (Optional) Three-state table prefix and the **single source of truth** for the Worker's `TABLE_PREFIX` binding: unset or empty → default `hop`, the reserved word `none` → explicit no prefix, anything else → that value. Every deploy writes it into the Worker binding — never configure it in the Cloudflare dashboard (step 4). |
+| `APP_URL` | (Optional) Production URL probed by the smoke test (step 6). When unset, the smoke test resolves and probes the Worker's workers.dev address automatically. Independent of the optional Worker variable of the same name (step 4) — the Worker does not need it. |
 
-The deploy workflow (`.github/workflows/deploy.yml`) injects the resource IDs into `wrangler.toml` at deploy time via `sed`, so no IDs are ever committed to the repository.
+The deploy workflow (`.github/workflows/deploy.yml`) injects the resource IDs and the resolved `TABLE_PREFIX` into `wrangler.toml` at deploy time via `sed`, so no IDs are ever committed to the repository. With the resources above and these values in place, the deploy is the whole setup for a fresh install: it creates the Worker when it does not exist yet, creates the tables, and writes the `TABLE_PREFIX` binding without any Cloudflare dashboard step (step 5).
 
-### 4. Configure variables and secrets
+### 4. Optional Worker variables
 
-Go to [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets** and add:
+**No dashboard step is required.** `TABLE_PREFIX` and the three runtime secrets (`JWT_SECRET`, `SETUP_SECRET`, `TOTP_ENCRYPTION_KEY`) all come from the GitHub values in step 3 and are written to the Worker by the deploy workflow on every run. Do **not** create or edit them in [Cloudflare dashboard](https://dash.cloudflare.com) → **Workers & Pages → Hop → Settings → Variables and Secrets**: with a prefix in use, a dashboard edit of `TABLE_PREFIX` makes the next deploy's migration guard abort until GitHub and the Worker agree again (and that deploy rewrites the binding from the GitHub variable anyway); a dashboard copy of one of the secrets is replaced by CI on the next deploy.
+
+What you may optionally configure on the Worker itself — CI never touches these, and `keep_vars = true` in `wrangler.toml` keeps them across deployments:
 
 | Name | Type | Required | Example / Notes |
 |---|---|---|---|
 | `APP_URL` | Variable | No | Canonical base URL (e.g. `https://yourdomain.com`). Optional — defaults to the origin of each request. Set it only to pin a URL that differs from the one clients hit. |
 | `RP_ID` | Variable | No | WebAuthn relying party ID (domain only). Optional — defaults to the request hostname. |
 | `APP_ORIGIN` | Variable | No | WebAuthn origin (full URL). Optional — defaults to the origin of each request. |
-| `TABLE_PREFIX` | Variable | No | Three-state table prefix. Unset → default `hop` (`hop_users`, `hop_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. Explicit empty string → no prefix (deployer accepts the table-collision risk). Must equal the GitHub `TABLE_PREFIX` variable (step 3). Set **before** first setup and never change it once data exists. |
-| `TOTP_ENCRYPTION_KEY` | Secret | Yes | `openssl rand -hex 32` — encrypts TOTP credentials; rotating it invalidates every bound TOTP. The **only** secret configured in the Cloudflare console and never handled by CI. |
 
-> `keep_vars = true` is set in `wrangler.toml`, so deployments will never overwrite these values.
->
-> `JWT_SECRET` and `SETUP_SECRET` are **not** configured here — CI uploads them from the GitHub Secrets added in step 3. `TOTP_ENCRYPTION_KEY` is the only secret that stays exclusively in the Cloudflare console.
+> `TABLE_PREFIX` is intentionally **not** in the table above: it is configuration-managed by the deploy (step 3). Unset → default `hop` (`hop_users`, `hop_links`, …). A custom value → that value, case preserved, `[^a-zA-Z0-9_]` stripped. `none` in GitHub → explicit empty string, no prefix (deployer accepts the table-collision risk). Set it before the first deploy and never change it once data exists.
 >
 > `APP_URL` / `RP_ID` / `APP_ORIGIN` are optional: when unset the Worker derives them from the incoming request (see [Environment Variables](#environment-variables)). An explicit value always wins, so a deployment that already configures them behaves exactly as before. `APP_NAME` is **no longer an env var** — the app name is the admin UI setting `app_name` (default `Hop`).
 >
 > `RP_ID` / `APP_ORIGIN` are the WebAuthn passkey relying-party identifiers. If you configure them, their values must **never change** — changing them invalidates every user's passkeys. With them unset, the rpID is derived from the hostname the user actually visits, so credentials stay bound to that hostname: visiting through your custom domain behaves like the old explicit config, while visiting through another hostname (e.g. `*.workers.dev`) yields a different rpID and therefore different passkey scope — inherent to a multi-hostname deployment, not a regression.
 >
-> The GitHub `TABLE_PREFIX` variable (step 3) still feeds prefix resolution; keep it equal to the Worker's `TABLE_PREFIX`.
+> Upgrading from a Worker whose `TOTP_ENCRYPTION_KEY` was created in the dashboard: put that same value into the GitHub Secret `TOTP_ENCRYPTION_KEY` (step 3) first — a different value makes every bound TOTP unreadable — then delete the dashboard copy.
 >
 > Email provider settings (Resend API key, SMTP credentials, etc.) are configured in the **admin UI** after first login — no Cloudflare dashboard config needed.
 
 ### 5. Build and deploy
 
-Go to **GitHub Actions → Deploy** and click **Run workflow** to trigger deployment manually.
+Go to **GitHub Actions → Deploy** and click **Run workflow** to trigger the deployment manually (a push or merge to `main` also deploys automatically once CI passes).
 
-This will deploy the code to Cloudflare Workers.
+One click is enough for a brand-new install, with the default prefix and a custom one alike:
+
+- wrangler uploads the code and creates the Worker if it does not exist yet;
+- the migrations run before the upload and create the tables under the resolved prefix;
+- the uploaded version carries the `TABLE_PREFIX` binding that CI wrote from the GitHub variable;
+- the workflow then confirms through the Cloudflare API that this version serves 100% of production traffic with the same prefix, and the smoke test probes the deployed URL.
+
+Two follow-ups stay manual, and neither of them affects whether the deploy succeeds:
+
+- **Custom domain** — bind it whenever you want one (Workers & Pages → Hop → Settings → Domains & Routes). Until then the deployment is reachable on its workers.dev address, which the smoke test probes automatically while `APP_URL` is unset.
+- **`APP_URL`** — once the domain is bound, optionally set the GitHub variable (step 3) so the smoke test probes the real production entry point.
 
 ### 6. Run database migrations
 
@@ -124,12 +133,25 @@ the deploy workflow resolves it to the three runtime states: **unset or empty �
 > before upgrading. Installations created before the `sl` → `hop` default change that
 > relied on the bare default (`sl_users`, …) must set `TABLE_PREFIX=sl` explicitly.
 
-When using a prefix, set `TABLE_PREFIX` under the GitHub **production environment →
-Variables** to exactly the same value as the Worker's `TABLE_PREFIX` **plain-text
-variable** in Cloudflare (e.g. `SL`; letters, digits and underscores only). Do not store
-it as a secret, and do not change it once data exists. The GitHub `APP_URL` variable must
-point at the production URL. `CLOUDFLARE_API_TOKEN` needs edit access to the D1 database
-and edit/version-read access to the Worker.
+Use a custom prefix by setting `TABLE_PREFIX` under the GitHub **production environment →
+Variables** (e.g. `SL`; letters, digits and underscores only) — that variable is the only
+place it is configured. The deploy writes it into the Worker's `TABLE_PREFIX` **plain-text
+binding**, so do not add or edit that binding in the Cloudflare dashboard, never store the
+value as a secret (a secret cannot be read back for comparison), and do not change it once
+data exists.
+
+With a prefix in use, the migration guard — which runs before the new code is uploaded —
+compares the prefix the deployed Worker currently uses with the GitHub variable and aborts
+on a mismatch: a mistyped GitHub value can never migrate another application's tables, and
+a stray dashboard edit is caught before it takes effect (the next deploy would rewrite the binding from the GitHub variable anyway). If the Worker
+is gone but its `<prefix>_` tables and `_<prefix>_schema_migrations` ledger still exist, the
+ledger proves those tables are this app's, so the run continues and the deploy recreates
+the Worker; prefixed tables **without** that ledger still abort.
+
+`APP_URL` is optional — when it is set the smoke test probes it, otherwise the test
+resolves the Workers' own workers.dev address. `CLOUDFLARE_API_TOKEN` needs edit access to
+the D1 database, edit/version-read access to the Worker, and Workers Scripts:Read for that
+workers.dev lookup.
 
 You no longer need to call the setup endpoint after each deploy. For manual
 deployments or emergencies it can still be triggered with a `POST` request carrying the
@@ -300,17 +322,17 @@ GET /:slug  →  302 to destination URL
 
 ## Environment Variables
 
-All variables and secrets are managed in the **Cloudflare dashboard** (Workers & Pages → Hop-worker → Settings → Variables and Secrets). `keep_vars = true` in `wrangler.toml` ensures deployments never overwrite them.
+`TABLE_PREFIX` and the three secrets come from this repository's GitHub Secrets/Variables (step 3) and are written to the Worker by the deploy workflow — do not configure them in the Cloudflare dashboard. The optional `APP_URL` / `RP_ID` / `APP_ORIGIN` variables are the only ones set on the Worker itself (Workers & Pages → Hop → Settings → Variables and Secrets), and `keep_vars = true` in `wrangler.toml` keeps them across deployments.
 
-| Variable | Type | Required | Description |
-|---|---|---|---|
-| `APP_URL` | Var | No | Canonical base URL (e.g. `https://go.example.com`). Optional — defaults to the request origin (used for CORS, HSTS, the refresh cookie's `Secure` flag and the `/404` redirect). |
-| `RP_ID` | Var | No | WebAuthn relying party ID (domain without protocol). Optional — defaults to the request hostname. |
-| `APP_ORIGIN` | Var | No | WebAuthn origin (full URL). Optional — defaults to the request origin. |
-| `TABLE_PREFIX` | Var | No | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); custom value → that value (case preserved); explicit empty → no prefix. Set once before the first migration — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
-| `JWT_SECRET` | Secret | Yes | HS256 signing key, ≥ 32 chars |
-| `TOTP_ENCRYPTION_KEY` | Secret | Yes | Hex string from `openssl rand -hex 32` |
-| `SETUP_SECRET` | Secret | Yes | Secret path for triggering DB migrations via HTTP |
+| Variable | Type | Required | Source | Description |
+|---|---|---|---|---|
+| `APP_URL` | Var | No | Worker (dashboard) | Canonical base URL (e.g. `https://go.example.com`). Optional — defaults to the request origin (used for CORS, HSTS, the refresh cookie's `Secure` flag and the `/404` redirect). |
+| `RP_ID` | Var | No | Worker (dashboard) | WebAuthn relying party ID (domain without protocol). Optional — defaults to the request hostname. |
+| `APP_ORIGIN` | Var | No | Worker (dashboard) | WebAuthn origin (full URL). Optional — defaults to the request origin. |
+| `TABLE_PREFIX` | Var | No | GitHub `TABLE_PREFIX` → CI | Three-state prefix for all D1 table names. Unset → default `hop` (`hop_users`, `hop_links`, …); custom value → that value (case preserved); `none` in GitHub → explicit empty, no prefix. Set once before the first deploy — changing it later requires renaming tables. Only alphanumeric and underscore characters are used. |
+| `JWT_SECRET` | Secret | Yes | GitHub Secret → CI | HS256 signing key, ≥ 32 chars |
+| `TOTP_ENCRYPTION_KEY` | Secret | Yes | GitHub Secret → CI | Hex string from `openssl rand -hex 32` |
+| `SETUP_SECRET` | Secret | Yes | GitHub Secret → CI | Secret path for triggering DB migrations via HTTP |
 
 ---
 
