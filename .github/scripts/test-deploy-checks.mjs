@@ -4,10 +4,12 @@ import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
@@ -600,4 +602,103 @@ test('deploy.yml：Smoke 步给自动推导补上 token 与账户 ID', () => {
     '自动推导需要 API token',
   );
   assert.match(smoke, /^ {8}run: bash \.github\/scripts\/smoke-test\.sh$/m);
+});
+
+// ─── 改动 F：TOTP_ENCRYPTION_KEY 改由 GitHub Actions 写入 secrets 文件 ────────
+
+// 执行 deploy.yml 里真实的 Write secrets file 步：取值、必填校验与落盘都走
+// workflow 自身，位置与格式不在测试里重写一份。
+function runWriteSecrets(f, values) {
+  const runnerTemp = join(f.dir, 'runner-temp');
+  mkdirSync(runnerTemp, { recursive: true });
+  const env = { ...f.env, RUNNER_TEMP: runnerTemp };
+  for (const name of ['JWT_SECRET', 'SETUP_SECRET', 'TOTP_ENCRYPTION_KEY']) {
+    delete env[name];
+  }
+  Object.assign(env, values);
+  const secretsPath = join(runnerTemp, 'secrets.json');
+  try {
+    execFileSync(
+      'bash',
+      [
+        '--noprofile',
+        '--norc',
+        '-eo',
+        'pipefail',
+        '-c',
+        stepScript('Write secrets file'),
+      ],
+      { cwd: f.dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+  } catch (e) {
+    return {
+      ok: false,
+      output: `${e.stdout ?? ''}${e.stderr ?? ''}`,
+      secretsPath,
+    };
+  }
+  return { ok: true, output: '', secretsPath };
+}
+
+// 测试专用假值：只验证键名与接线，绝不涉及任何真实密钥。
+const fakeSecrets = {
+  JWT_SECRET: 'test-jwt-not-a-real-value',
+  SETUP_SECRET: 'test-setup-not-a-real-value',
+  TOTP_ENCRYPTION_KEY: 'test-totp-not-a-real-value',
+};
+
+test('secrets 文件：三键齐全时含 TOTP_ENCRYPTION_KEY', (t) => {
+  const f = fixture(t);
+  const result = runWriteSecrets(f, fakeSecrets);
+  assert.equal(result.ok, true, result.output);
+  const parsed = JSON.parse(readFileSync(result.secretsPath, 'utf8'));
+  assert.deepEqual(Object.keys(parsed).sort(), [
+    'JWT_SECRET',
+    'SETUP_SECRET',
+    'TOTP_ENCRYPTION_KEY',
+  ]);
+  assert.equal(parsed.TOTP_ENCRYPTION_KEY, fakeSecrets.TOTP_ENCRYPTION_KEY);
+  // 仍只在 $RUNNER_TEMP 落盘、权限 600。
+  assert.equal(statSync(result.secretsPath).mode & 0o777, 0o600);
+});
+
+test('secrets 文件：缺 TOTP_ENCRYPTION_KEY 时该步失败且不继续', (t) => {
+  const f = fixture(t);
+  const values = { ...fakeSecrets };
+  delete values.TOTP_ENCRYPTION_KEY;
+  const result = runWriteSecrets(f, values);
+  assert.equal(result.ok, false, '缺键必须失败关闭');
+  assert.match(
+    result.output,
+    /::error::GitHub Secret 'TOTP_ENCRYPTION_KEY' is empty or missing/,
+    result.output,
+  );
+  // 没有 secrets 文件，后续 Deploy 步拿不到 --secrets-file，部署不会继续。
+  assert.equal(existsSync(result.secretsPath), false);
+});
+
+test('deploy.yml：Write secrets file 步从仓库 Secret 注入 TOTP_ENCRYPTION_KEY', () => {
+  const lines = readFileSync(
+    join(repoRoot, '.github', 'workflows', 'deploy.yml'),
+    'utf8',
+  ).split('\n');
+  const start = lines.findIndex(
+    (line) => line.trim() === '- name: Write secrets file',
+  );
+  assert.notEqual(start, -1, 'deploy.yml 缺少 Write secrets file 步');
+  const end = lines.findIndex(
+    (line, i) => i > start && /^\s*- (name|uses):/.test(line),
+  );
+  const step = lines.slice(start, end === -1 ? lines.length : end).join('\n');
+  assert.match(
+    step,
+    /^ {10}TOTP_ENCRYPTION_KEY: \$\{\{ secrets\.TOTP_ENCRYPTION_KEY \}\}$/m,
+    'TOTP_ENCRYPTION_KEY 必须取自仓库 Secret，与 JWT_SECRET 同路',
+  );
+  // 与 JWT_SECRET/SETUP_SECRET 同规格：必填校验清单里点名。
+  assert.match(
+    step,
+    /for name in JWT_SECRET SETUP_SECRET TOTP_ENCRYPTION_KEY; do/,
+    '必填校验须覆盖该键',
+  );
 });
