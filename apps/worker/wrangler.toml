@@ -5,6 +5,12 @@ account_id = "CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
+# TABLE_PREFIX is config-managed: CI replaces this placeholder with the
+# resolved GitHub variable vars.TABLE_PREFIX before wrangler uploads the
+# version, so the binding always matches the prefix the migrations used.
+[vars]
+TABLE_PREFIX = "TABLE_PREFIX_PLACEHOLDER"
+
 [assets]
 directory = "../web/dist"
 binding = "ASSETS"

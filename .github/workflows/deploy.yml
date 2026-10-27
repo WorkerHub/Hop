@@ -55,12 +55,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Runs before Inject so the inject step can write the resolved prefix
+      # into wrangler.toml: the GitHub variable is the single source of truth
+      # for the Worker's TABLE_PREFIX binding. Depends only on vars.TABLE_PREFIX.
+      - name: Resolve TABLE_PREFIX (three-state)
+        id: prefix
+        env:
+          TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
+        run: |
+          resolved="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON .github/scripts/resolve-table-prefix.mjs)"
+          echo "resolved TABLE_PREFIX: ${resolved:-<empty>}"
+          echo "table_prefix=${resolved}" >> "$GITHUB_OUTPUT"
+
       - name: Inject resource IDs
         env:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TABLE_PREFIX: ${{ steps.prefix.outputs.table_prefix }}
         run: |
           check() {
             if ! [[ "${!1}" =~ $2 ]]; then
@@ -78,6 +91,9 @@ jobs:
           sed -i "s/D1_DATABASE_NAME_PLACEHOLDER/${D1_DATABASE_NAME}/g" "$f"
           sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/${KV_NAMESPACE_ID}/g" "$f"
           sed -i "s/CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER/${CLOUDFLARE_ACCOUNT_ID}/g" "$f"
+          # TABLE_PREFIX is config-managed: the resolved GitHub variable
+          # (default 'hop', 'none' → empty string) becomes the Worker binding.
+          sed -i "s/TABLE_PREFIX_PLACEHOLDER/${TABLE_PREFIX}/g" "$f"
           if grep -q '_PLACEHOLDER' "$f"; then
             echo "::error::Unreplaced placeholders remain in $f"
             exit 1
@@ -91,15 +107,6 @@ jobs:
       # Order: migrate first, then deploy code. Migrations must therefore be
       # backward compatible with the code currently live (expand → deploy →
       # contract: add columns/tables now, drop old ones in a later release).
-      - name: Resolve TABLE_PREFIX (three-state)
-        id: prefix
-        env:
-          TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
-        run: |
-          resolved="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON .github/scripts/resolve-table-prefix.mjs)"
-          echo "resolved TABLE_PREFIX: ${resolved:-<empty>}"
-          echo "table_prefix=${resolved}" >> "$GITHUB_OUTPUT"
-
       - name: Prepare D1 migrations
         id: d1
         working-directory: apps/worker
