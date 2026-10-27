@@ -1,7 +1,9 @@
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+// ONE-579: vitest/config re-exports Vite's defineConfig plus the `test` field, so
+// the DOM regression suite reuses the same aliases and React plugin as the app.
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -9,6 +11,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  test: {
+    // ONE-579: browser-level regression tests (jsdom + React 19). `node --test`
+    // covers pure modules only, which is why the 2FA landing bug shipped.
+    environment: 'jsdom',
+    include: ['src/**/*.dom.test.{ts,tsx}'],
   },
   server: {
     proxy: {
