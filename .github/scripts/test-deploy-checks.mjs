@@ -241,13 +241,13 @@ for (const scenario of [
     ok: false,
   },
   {
-    // waker 模式：signing key 必须真的绑在版本上，否则回调一律 500。
-    name: 'waker 模式且 WAKER_SIGNING_KEY 已绑定 → 通过',
+    // signing key 已配置：它必须真的绑在版本上，否则回调只会到 03:00 才暴露 500。
+    name: '配置了 WAKER_SIGNING_KEY 且已绑定 → 通过',
     version: 'uploaded',
     percentage: 100,
     prefix: 'hop',
     env: 'hop',
-    waker: 'waker',
+    wakerKey: 'bound',
     secretBindings: [
       '{"name":"JWT_SECRET","type":"secret_text"}',
       '{"name":"SETUP_SECRET","type":"secret_text"}',
@@ -257,12 +257,12 @@ for (const scenario of [
     ok: true,
   },
   {
-    name: 'waker 模式缺 WAKER_SIGNING_KEY 绑定必须失败',
+    name: '配置了 WAKER_SIGNING_KEY 但版本上没有绑定 → 必须失败',
     version: 'uploaded',
     percentage: 100,
     prefix: 'hop',
     env: 'hop',
-    waker: 'waker',
+    wakerKey: 'bound',
     secretBindings: [
       '{"name":"JWT_SECRET","type":"secret_text"}',
       '{"name":"SETUP_SECRET","type":"secret_text"}',
@@ -272,48 +272,22 @@ for (const scenario of [
     ok: false,
   },
   {
-    // 切换完成态：triggers 真的没了才允许通过。
-    name: 'waker+remove 且 schedules 为空 → 通过',
+    // 没配 key：部署照常成功，接收端运行时 fail closed——不是部署失败。
+    name: '未配置 WAKER_SIGNING_KEY → 通过（接收端 fail closed）',
     version: 'uploaded',
     percentage: 100,
     prefix: 'hop',
     env: 'hop',
-    waker: 'waker',
-    triggers: 'remove',
-    schedulesEmpty: true,
-    secretBindings: [
-      '{"name":"JWT_SECRET","type":"secret_text"}',
-      '{"name":"SETUP_SECRET","type":"secret_text"}',
-      '{"name":"TOTP_ENCRYPTION_KEY","type":"secret_text"}',
-      '{"name":"WAKER_SIGNING_KEY","type":"secret_text"}',
-    ],
+    wakerKey: 'absent',
     ok: true,
   },
   {
-    name: 'waker+remove 但 Worker 仍有 cron schedule → 必须失败',
+    // 原生 Cron Trigger 丢了等于清理停摆，必须失败（与 key 无关）。
+    name: 'schedules 为空 → 必须失败',
     version: 'uploaded',
     percentage: 100,
     prefix: 'hop',
     env: 'hop',
-    waker: 'waker',
-    triggers: 'remove',
-    secretBindings: [
-      '{"name":"JWT_SECRET","type":"secret_text"}',
-      '{"name":"SETUP_SECRET","type":"secret_text"}',
-      '{"name":"TOTP_ENCRYPTION_KEY","type":"secret_text"}',
-      '{"name":"WAKER_SIGNING_KEY","type":"secret_text"}',
-    ],
-    expectError: 'still has cron schedule',
-    ok: false,
-  },
-  {
-    // 原生模式丢了 schedule 等于清理停摆，必须失败。
-    name: 'cron 模式但 schedules 为空 → 必须失败',
-    version: 'uploaded',
-    percentage: 100,
-    prefix: 'hop',
-    env: 'hop',
-    waker: 'cron',
     schedulesEmpty: true,
     expectError: "expected exactly '0 3 \\* \\* \\*'",
     ok: false,
@@ -370,12 +344,8 @@ printf '%s\\n' '${schedulesBody}'
           TABLE_PREFIX: scenario.env ?? 'SL',
           WRANGLER_OUTPUT_FILE_PATH: output,
           CLOUDFLARE_API_TOKEN: 'test-token-not-a-real-value',
-          ...(scenario.waker === undefined
-            ? {}
-            : { WAKER_MODE: scenario.waker }),
-          ...(scenario.triggers === undefined
-            ? {}
-            : { WAKER_TRIGGERS: scenario.triggers }),
+          // 解析后的 key 状态由 Write secrets file 步传给 Verify 步。
+          WAKER_SIGNING_KEY_EXPECTED: scenario.wakerKey ?? 'absent',
         },
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -388,17 +358,15 @@ printf '%s\\n' '${schedulesBody}'
         stdout,
       );
       assert.match(stdout, /Secret bindings on version uploaded/);
-      if (scenario.waker === 'waker') {
-        assert.match(stdout, /Waker mode: callback receiver enabled/);
-        assert.match(stdout, /WAKER_SIGNING_KEY/);
+      if (scenario.wakerKey === 'bound') {
+        assert.match(stdout, /WAKER_SIGNING_KEY configured — it must be bound/);
       } else {
-        assert.doesNotMatch(stdout, /Waker mode:/);
+        assert.match(
+          stdout,
+          /no WAKER_SIGNING_KEY configured — .*fails closed/,
+        );
       }
-      if (scenario.waker === 'waker' && scenario.triggers === 'remove') {
-        assert.match(stdout, /Cron schedules: none/);
-      } else {
-        assert.match(stdout, /Cron schedules: 0 3 \* \* \*/);
-      }
+      assert.match(stdout, /Cron schedules: 0 3 \* \* \*/);
     } else {
       let thrown = null;
       try {
@@ -544,6 +512,9 @@ for (const scenario of [
       toml,
       new RegExp(`^TABLE_PREFIX = "${scenario.expected}"$`, 'm'),
     );
+    // 部署产物仍带 [triggers]：原生 Cron Trigger 静态保留，流水线不摘它。
+    assert.match(toml, /^\[triggers\]$/m);
+    assert.match(toml, /^crons = \["0 3 \* \* \*"\]$/m);
     // 残留检查（Inject 步的 grep）通过：所有占位符都已替换。
     assert.doesNotMatch(toml, /_PLACEHOLDER/);
   });
@@ -776,18 +747,25 @@ test('deploy.yml：Smoke 步给自动推导补上 token 与账户 ID', () => {
 function runWriteSecrets(f, values) {
   const runnerTemp = join(f.dir, 'runner-temp');
   mkdirSync(runnerTemp, { recursive: true });
-  const env = { ...f.env, RUNNER_TEMP: runnerTemp };
+  const githubOutput = join(runnerTemp, 'github-output');
+  writeFileSync(githubOutput, '');
+  const env = {
+    ...f.env,
+    RUNNER_TEMP: runnerTemp,
+    GITHUB_OUTPUT: githubOutput,
+  };
   for (const name of [
     'JWT_SECRET',
     'SETUP_SECRET',
     'TOTP_ENCRYPTION_KEY',
-    'WAKER_MODE',
     'WAKER_SIGNING_KEY',
   ]) {
     delete env[name];
   }
   Object.assign(env, values);
   const secretsPath = join(runnerTemp, 'secrets.json');
+
+  const output = () => readFileSync(githubOutput, 'utf8').trim();
   try {
     execFileSync(
       'bash',
@@ -806,9 +784,10 @@ function runWriteSecrets(f, values) {
       ok: false,
       output: `${e.stdout ?? ''}${e.stderr ?? ''}`,
       secretsPath,
+      githubOutput: output(),
     };
   }
-  return { ok: true, output: '', secretsPath };
+  return { ok: true, output: '', secretsPath, githubOutput: output() };
 }
 
 // 测试专用假值：只验证键名与接线，绝不涉及任何真实密钥。
@@ -874,13 +853,12 @@ test('deploy.yml：Write secrets file 步从仓库 Secret 注入 TOTP_ENCRYPTION
   );
 });
 
-// ─── waker 双模式：secrets 文件与部署接线 ────────────────────────────────────
+// ─── waker 单密钥启停：secrets 文件与部署接线 ─────────────────────────────────
 
-test('secrets 文件：waker 模式注入 WAKER_SIGNING_KEY', (t) => {
+test('secrets 文件：配置了 WAKER_SIGNING_KEY 就注入，状态输出 bound', (t) => {
   const f = fixture(t);
   const result = runWriteSecrets(f, {
     ...fakeSecrets,
-    WAKER_MODE: 'waker',
     WAKER_SIGNING_KEY: 'waker-test-signing-key-not-a-real-value',
   });
   assert.equal(result.ok, true, result.output);
@@ -896,79 +874,41 @@ test('secrets 文件：waker 模式注入 WAKER_SIGNING_KEY', (t) => {
     'waker-test-signing-key-not-a-real-value',
   );
   assert.equal(statSync(result.secretsPath).mode & 0o777, 0o600);
+  assert.equal(result.githubOutput, 'waker_signing_key=bound');
 });
 
-test('secrets 文件：waker 模式缺 WAKER_SIGNING_KEY 时该步失败且不落盘', (t) => {
+test('secrets 文件：未配置 WAKER_SIGNING_KEY 不拦部署，状态输出 absent', (t) => {
   const f = fixture(t);
-  const result = runWriteSecrets(f, { ...fakeSecrets, WAKER_MODE: 'waker' });
-  assert.equal(result.ok, false, 'waker 模式缺 signing key 必须失败关闭');
-  assert.match(
-    result.output,
-    /::error::GitHub Secret 'WAKER_SIGNING_KEY' is empty or missing/,
-    result.output,
-  );
-  assert.equal(existsSync(result.secretsPath), false);
-});
-
-test('secrets 文件：cron 模式不注入 WAKER_SIGNING_KEY（即使配置了也不带）', (t) => {
-  const f = fixture(t);
-  const result = runWriteSecrets(f, {
-    ...fakeSecrets,
-    WAKER_MODE: 'cron',
-    WAKER_SIGNING_KEY: 'waker-test-signing-key-not-a-real-value',
-  });
-  assert.equal(result.ok, true, result.output);
+  const result = runWriteSecrets(f, fakeSecrets);
+  assert.equal(result.ok, true, '缺少可选 key 不得阻止部署');
   const parsed = JSON.parse(readFileSync(result.secretsPath, 'utf8'));
   assert.deepEqual(Object.keys(parsed).sort(), [
     'JWT_SECRET',
     'SETUP_SECRET',
     'TOTP_ENCRYPTION_KEY',
   ]);
+  assert.equal(result.githubOutput, 'waker_signing_key=absent');
 });
 
-test('deploy.yml：Configure waker mode 步读取三个 GitHub 变量，在 Inject 之后、Deploy 之前', () => {
+test('secrets 文件：WAKER_SIGNING_KEY 只有空白也按未配置处理（fail closed）', (t) => {
+  const f = fixture(t);
+  const result = runWriteSecrets(f, {
+    ...fakeSecrets,
+    WAKER_SIGNING_KEY: '   ',
+  });
+  assert.equal(result.ok, true);
+  const parsed = JSON.parse(readFileSync(result.secretsPath, 'utf8'));
+  assert.equal(parsed.WAKER_SIGNING_KEY, undefined);
+  assert.equal(result.githubOutput, 'waker_signing_key=absent');
+});
+
+test('deploy.yml：不再有模式步骤，signing key 只从 Secret 取', () => {
   const text = readFileSync(
     join(repoRoot, '.github', 'workflows', 'deploy.yml'),
     'utf8',
   );
-  const lines = text.split('\n');
-  const stepAt = (name) =>
-    lines.findIndex((line) => line.trim() === `- name: ${name}`);
-  const inject = stepAt('Inject resource IDs');
-  const configure = stepAt('Configure waker mode');
-  const deploy = stepAt('Deploy');
-  assert.ok(
-    inject !== -1 && configure !== -1 && deploy !== -1,
-    '缺步骤（Inject / Configure waker mode / Deploy）',
-  );
-  assert.ok(inject < configure, 'Configure 必须在 Inject 之后（占位符已替换）');
-  assert.ok(configure < deploy, 'Configure 必须在 Deploy 之前');
-
-  const end = lines.findIndex(
-    (line, i) => i > configure && /^\s*- (name|uses):/.test(line),
-  );
-  const step = lines
-    .slice(configure, end === -1 ? lines.length : end)
-    .join('\n');
-  assert.match(step, /^ {10}WAKER_MODE: \$\{\{ vars\.WAKER_MODE \}\}$/m);
-  assert.match(step, /^ {10}WAKER_URL: \$\{\{ vars\.WAKER_URL \}\}$/m);
-  assert.match(
-    step,
-    /^ {10}WAKER_TRIGGERS: \$\{\{ vars\.WAKER_TRIGGERS \}\}$/m,
-  );
-  assert.match(
-    step,
-    /run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \.github\/scripts\/configure-waker-mode\.mjs$/m,
-  );
-  // 模式结果传给 secrets 文件与 verify 步：两处都必须取自同一步的 output。
-  assert.match(text, /WAKER_MODE: \$\{\{ steps\.waker\.outputs\.mode \}\}/);
-});
-
-test('deploy.yml：Verify 步带上解析后的 waker 模式，signing key 只从 Secret 取', () => {
-  const text = readFileSync(
-    join(repoRoot, '.github', 'workflows', 'deploy.yml'),
-    'utf8',
-  );
+  assert.doesNotMatch(text, /Configure waker mode/);
+  assert.doesNotMatch(text, /configure-waker-mode/);
   assert.match(
     text,
     /WAKER_SIGNING_KEY: \$\{\{ secrets\.WAKER_SIGNING_KEY \}\}/,

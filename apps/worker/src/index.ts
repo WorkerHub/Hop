@@ -123,12 +123,13 @@ app.all('/api/*', (c) => {
   return apiError(c, 404, 'NOT_FOUND', 'Not found');
 });
 
-// ─── waker callback (optional second scheduler) ───────────────────────────────
+// ─── waker callback (optional second trigger, dual run) ───────────────────────
 // Registered before the short-link route and the SPA fallback so the whole
-// /_waker prefix is decided here. When the integration is off (the default),
-// both the exact path and its children answer a JSON 404 — never the SPA's 200
-// HTML, which waker would mistake for a successful execution. In waker mode the
-// sub-app hands POST /_waker/execute to the SDK receiver (see routes/waker.ts).
+// /_waker prefix is decided here. The sub-app hands POST /_waker/execute to the
+// SDK receiver; whether it actually runs is decided by one thing only — the
+// signing key binding (present: verify + run the same cleanup as scheduled();
+// absent: 500 signing_key_missing). Every path under the prefix answers JSON,
+// never the SPA's 200 HTML, which waker would mistake for a successful run.
 app.all(CALLBACK_MOUNT_PATH, (c) => {
   return apiError(c, 404, 'NOT_FOUND', 'Not found');
 });
@@ -175,8 +176,9 @@ export { app };
 export default {
   fetch: app.fetch,
 
-  // L-2: Nightly cleanup of expired rows (cron "0 3 * * *"; in waker mode the
-  // platform calls the same runCleanup through /_waker/execute).
+  // L-2: Nightly cleanup of expired rows (native Cron Trigger "0 3 * * *",
+  // static in wrangler.toml; the waker callback runs the same runCleanup through
+  // /_waker/execute while its signing key is bound — the dual-run state).
   async scheduled(
     _event: ScheduledController,
     env: Env,

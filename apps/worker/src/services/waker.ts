@@ -40,8 +40,9 @@ export const WAKER_EXECUTIONS_TABLE = 'waker_executions';
  * Build a receiver bound to this request's env.
  *
  * The signing key is read by the SDK from `env.WAKER_SIGNING_KEY` (secrets
- * only). Missing key → the SDK fails closed with 500 `signing_key_missing`;
- * it never runs a job that could not be verified.
+ * only) and is the integration's only switch: present → verify then run this
+ * handler; absent → the SDK fails closed with 500 `signing_key_missing`, so it
+ * never runs a job that could not be verified.
  *
  * Built per request because the ledger table name depends on TABLE_PREFIX and
  * the key on the bindings, both only known at request time. Construction does

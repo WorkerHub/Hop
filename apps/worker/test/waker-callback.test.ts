@@ -1,6 +1,7 @@
 // Waker callback path (spec v1.0 §2/§4): signature verification, replay
-// window, executionId deduplication, fail-closed behaviour without a signing
-// key, and the explicit 404 whenever the integration is off.
+// window, executionId deduplication, and the two states of the only switch —
+// signing key bound → the callback runs, absent → it fails closed with 500
+// `signing_key_missing` (never the SPA's 200 HTML).
 //
 // The request is signed here with WebCrypto exactly as documented by the
 // frozen protocol (`<timestamp>\n<executionId>\n<jobId>\n<rawBody>`, HMAC-SHA256,
@@ -100,8 +101,6 @@ function wakerEnv(overrides: Partial<Env> = {}, prefix = 'hop'): TestEnv {
   return makeEnv({
     DB: new D1Mock(true, prefix) as unknown as Env['DB'],
     TABLE_PREFIX: prefix,
-    WAKER_MODE: 'waker',
-    WAKER_URL: 'https://waker.example.com',
     WAKER_SIGNING_KEY: SIGNING_KEY,
     ...overrides,
   });
@@ -138,23 +137,22 @@ function callbackPath(): string {
   return `${CALLBACK_MOUNT_PATH}/execute`;
 }
 
-// ─── when the integration is off, the path must answer 404 explicitly ────────
+// ─── the signing key is the only switch: no mode variable exists ─────────────
 
 for (const scenario of [
-  { name: 'WAKER_MODE 未设置（默认 cron）', mode: undefined, url: undefined },
-  { name: 'WAKER_MODE=cron', mode: 'cron', url: 'https://waker.example.com' },
   {
-    name: 'WAKER_MODE=waker 但 WAKER_URL 缺失（receiver 自动关闭）',
-    mode: 'waker',
-    url: undefined,
+    name: 'WAKER_SIGNING_KEY 未绑定',
+    overrides: { WAKER_SIGNING_KEY: undefined },
+  },
+  {
+    name: 'WAKER_SIGNING_KEY 为空字符串',
+    overrides: { WAKER_SIGNING_KEY: '   ' },
   },
 ]) {
-  test(`非 waker 运行时 ${scenario.name} → /_waker/execute 显式 404，不是 SPA 200`, async () => {
-    const ctx = makeEnv({
-      WAKER_MODE: scenario.mode,
-      WAKER_URL: scenario.url,
-      WAKER_SIGNING_KEY: SIGNING_KEY,
-    });
+  test(`${scenario.name} → 500 signing_key_missing（JSON，绝不是 SPA 的 200 HTML），清理不执行`, async () => {
+    const ctx = wakerEnv(scenario.overrides);
+    seedExpiredRows(ctx);
+    // A correctly signed request: only the missing key can stop it.
     const signed = await signedRequest();
     const res = await request(
       app,
@@ -162,15 +160,25 @@ for (const scenario of [
       { method: 'POST', headers: signed.headers, body: signed.body },
       ctx,
     );
-    // ASSETS (the SPA fallback) would answer 200 'assets'; waker reads any 2xx
-    // as a successful execution, so this must be a JSON 404 instead.
-    assert.equal(res.status, 404);
+    // The SPA fallback would answer 200 'assets'; waker reads any 2xx as a
+    // successful execution, so a missing key must never reach it.
+    assert.notEqual(res.status, 200);
+    assert.equal(res.status, 500);
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
-    const body = await res.json();
-    assert.equal(body.code, 'waker_disabled');
-    assert.equal(countRows(ctx, 'verifications', ''), 0);
+    assert.equal((await res.json()).error.code, 'signing_key_missing');
+    assert.equal(countRows(ctx, 'verifications'), 2);
+    assert.equal(countRows(ctx, 'totp_used'), 2);
+    assert.equal(countRows(ctx, 'waker_executions'), 0);
   });
 }
+
+test('无 WAKER_SIGNING_KEY 时未签名的 POST 也是 JSON 4xx（不落到 SPA）', async () => {
+  const ctx = makeEnv({ WAKER_SIGNING_KEY: undefined });
+  const res = await request(app, callbackPath(), { method: 'POST' }, ctx);
+  assert.equal(res.status, 400);
+  assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+  assert.equal((await res.json()).error.code, 'invalid_request');
+});
 
 test('GET /_waker（无 /execute）也是 JSON 404，不落到短链路由或 SPA', async () => {
   const ctx = wakerEnv();
@@ -179,9 +187,21 @@ test('GET /_waker（无 /execute）也是 JSON 404，不落到短链路由或 SP
   assert.match(res.headers.get('content-type') ?? '', /application\/json/);
 });
 
+test('/_waker 下其它未挂载路径也是 JSON 404，不落到 SPA', async () => {
+  const ctx = wakerEnv();
+  const res = await request(
+    app,
+    `${CALLBACK_MOUNT_PATH}/unknown`,
+    { method: 'GET' },
+    ctx,
+  );
+  assert.equal(res.status, 404);
+  assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+});
+
 // ─── happy path: same cleanup as the native trigger, counts in the response ──
 
-test('验签通过 → 执行清理、返回计数、executionId 落 {prefix}waker_executions', async () => {
+test('有 WAKER_SIGNING_KEY → 验签通过即执行清理、返回计数、executionId 落 {prefix}waker_executions', async () => {
   const ctx = wakerEnv();
   seedExpiredRows(ctx);
   const signed = await signedRequest({ executionId: 'exec-ok-1' });
@@ -355,24 +375,6 @@ test('未声明的任务名（与 waker 管理面注册名不一致）→ 404 un
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error.code, 'unknown_job');
   assert.equal(countRows(ctx, 'verifications'), 2);
-});
-
-test('waker 模式但缺 WAKER_SIGNING_KEY → 500 signing_key_missing（失败关闭，不裸奔执行）', async () => {
-  const ctx = wakerEnv({ WAKER_SIGNING_KEY: undefined });
-  seedExpiredRows(ctx);
-  const signed = await signedRequest();
-
-  const res = await request(
-    app,
-    callbackPath(),
-    { method: 'POST', headers: signed.headers, body: signed.body },
-    ctx,
-  );
-
-  assert.equal(res.status, 500);
-  assert.equal((await res.json()).error.code, 'signing_key_missing');
-  assert.equal(countRows(ctx, 'verifications'), 2);
-  assert.equal(countRows(ctx, 'waker_executions'), 0);
 });
 
 // ─── replay + idempotency ────────────────────────────────────────────────────

@@ -1,46 +1,26 @@
-// HTTP side of the optional waker integration: mount the SDK's receiver at
-// /_waker and answer an explicit 404 whenever the integration is off.
+// HTTP side of the waker integration: mount the SDK's receiver at /_waker.
 //
-// Why the 404 matters: wrangler.toml serves the SPA with
-// `not_found_handling = "single-page-application"`, so an unmounted
-// /_waker/execute would fall through to the SPA and answer **200 HTML**.
-// waker treats any 2xx as "execution succeeded", so that would silently report
-// a nightly cleanup that never ran. Every non-waker state therefore answers a
-// JSON 404 (spec v1.0 §2).
+// The signing key is the **only** switch — there is no mode variable and no
+// second gate:
+//   - `WAKER_SIGNING_KEY` bound (GitHub Secret → `--secrets-file`) → the SDK
+//     verifies the HMAC signature, then runs the very same cleanup as
+//     `scheduled()` (src/services/waker.ts);
+//   - no key → the SDK fails closed with 500 `signing_key_missing`; it never
+//     runs a job it could not verify.
 //
-// "Off" means either WAKER_MODE is unset/`cron`, or WAKER_MODE=waker without
-// WAKER_URL — a missing WAKER_URL closes the receiver instead of leaving a
-// half-configured endpoint open, and the native trigger keeps working.
+// Everything under /_waker answers JSON, never the SPA's 200 HTML: wrangler.toml
+// serves the SPA with `not_found_handling = "single-page-application"`, and
+// waker treats any 2xx as "execution succeeded" — a fall-through would report a
+// nightly cleanup that never ran. The receiver answers the protocol errors
+// itself; a path it does not route becomes a JSON 404 (host app's notFound).
 
 import { Hono } from 'hono';
 import { apiError } from '../lib/errors.js';
 import { createWakerCallbackReceiver } from '../services/waker.js';
 import type { Env, Variables } from '../types.js';
-import {
-  CALLBACK_MOUNT_PATH,
-  isWakerEnabled,
-  readEnvString,
-  WAKER_URL_ENV,
-} from '../waker/index.js';
+import { CALLBACK_MOUNT_PATH } from '../waker/index.js';
 
 type AppEnv = { Bindings: Env; Variables: Variables };
-
-/** True only when the receiver should answer: waker mode *and* a platform URL. */
-function callbackEnabled(env: Env): boolean {
-  return (
-    isWakerEnabled(envLike(env)) &&
-    readEnvString(envLike(env), WAKER_URL_ENV) !== null
-  );
-}
-
-/**
- * The SDK types the env as `Record<string, unknown>` so it can be used without
- * depending on any downstream binding types. Env is an interface (no index
- * signature), hence the cast — the SDK only reads named string keys.
- */
-function envLike(env: Env): Record<string, unknown> {
-  return env as unknown as Record<string, unknown>;
-}
 
 /**
  * Hand one request to the SDK's receiver.
@@ -60,6 +40,9 @@ function forwardToReceiver(
     CALLBACK_MOUNT_PATH,
     createWakerCallbackReceiver(env) as unknown as Hono<AppEnv>,
   );
+  // Unrouted paths inside the mount must still answer JSON (404), so /_waker
+  // can never fall through to the SPA fallback below it in src/index.ts.
+  host.notFound((c) => apiError(c, 404, 'NOT_FOUND', 'Not found'));
   return host.fetch(request, env);
 }
 
@@ -96,19 +79,6 @@ export function wakerRoutes(): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
 
   routes.all('*', async (c) => {
-    if (!callbackEnabled(c.env)) {
-      if (isWakerEnabled(envLike(c.env))) {
-        console.warn(
-          JSON.stringify({
-            level: 'warn',
-            event: 'waker_callback_disabled',
-            reason: 'missing_url',
-            env: WAKER_URL_ENV,
-          }),
-        );
-      }
-      return apiError(c, 404, 'waker_disabled', 'Waker callback is disabled');
-    }
     return logRejection(await forwardToReceiver(c.req.raw, c.env));
   });
 
