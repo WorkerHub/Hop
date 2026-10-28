@@ -19,10 +19,22 @@ export interface Env {
   APP_ORIGIN?: string;
   TABLE_PREFIX?: string;
 
+  // Waker integration (optional second scheduler; unset = native cron).
+  // WAKER_MODE / WAKER_URL are written into [vars] by the deploy workflow from
+  // GitHub variables (cron is the default when unset). The callback receiver is
+  // only mounted when WAKER_MODE=waker and WAKER_URL is non-empty; without a
+  // URL it stays closed and the native Cron Trigger is unaffected.
+  WAKER_MODE?: string;
+  WAKER_URL?: string;
+
   // Secrets
   JWT_SECRET: string;
   TOTP_ENCRYPTION_KEY: string;
   SETUP_SECRET: string;
+  // Waker project signing key (callback HMAC verification). Secrets only:
+  // GitHub Secrets → `wrangler deploy --secrets-file`. Missing in waker mode
+  // makes the callback fail closed with 500 `signing_key_missing`.
+  WAKER_SIGNING_KEY?: string;
 }
 
 export interface Variables {

@@ -12,7 +12,10 @@ import authRoutes from './routes/auth.js';
 import linksRoutes from './routes/links.js';
 import redirectHandler from './routes/redirect.js';
 import setupRoutes from './routes/setup.js';
+import { wakerRoutes } from './routes/waker.js';
+import { runCleanup } from './services/cleanup.js';
 import type { Env, Variables } from './types.js';
+import { CALLBACK_MOUNT_PATH } from './waker/index.js';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -120,6 +123,17 @@ app.all('/api/*', (c) => {
   return apiError(c, 404, 'NOT_FOUND', 'Not found');
 });
 
+// ─── waker callback (optional second scheduler) ───────────────────────────────
+// Registered before the short-link route and the SPA fallback so the whole
+// /_waker prefix is decided here. When the integration is off (the default),
+// both the exact path and its children answer a JSON 404 — never the SPA's 200
+// HTML, which waker would mistake for a successful execution. In waker mode the
+// sub-app hands POST /_waker/execute to the SDK receiver (see routes/waker.ts).
+app.all(CALLBACK_MOUNT_PATH, (c) => {
+  return apiError(c, 404, 'NOT_FOUND', 'Not found');
+});
+app.route(CALLBACK_MOUNT_PATH, wakerRoutes());
+
 // ─── Short link redirect ───────────────────────────────────────────────────────
 const SPA_PREFIXES = new Set([...RESERVED_SLUGS].map((s) => `/${s}`));
 
@@ -161,19 +175,21 @@ export { app };
 export default {
   fetch: app.fetch,
 
-  // L-2: Nightly cleanup of expired rows (cron: "0 3 * * *")
+  // L-2: Nightly cleanup of expired rows (cron "0 3 * * *"; in waker mode the
+  // platform calls the same runCleanup through /_waker/execute).
   async scheduled(
     _event: ScheduledController,
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
-    await env.DB.batch([
-      env.DB.prepare(
-        `DELETE FROM ${tbl(env, 'verifications')} WHERE expires_at < unixepoch()`,
-      ),
-      env.DB.prepare(
-        `DELETE FROM ${tbl(env, 'totp_used')} WHERE used_at < unixepoch() - 90`,
-      ),
-    ]);
+    const result = await runCleanup(env);
+    console.info(
+      JSON.stringify({
+        level: 'info',
+        event: 'nightly_cleanup',
+        source: 'cron',
+        ...result,
+      }),
+    );
   },
 } satisfies ExportedHandler<Env>;

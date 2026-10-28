@@ -51,6 +51,7 @@ export class MemoryKV {
 
 interface D1Result {
   results: Record<string, unknown>[];
+  meta: { changes: number };
 }
 
 class D1Statement {
@@ -80,17 +81,27 @@ class D1Statement {
     const result = this.db.prepare(this.sql).run(...this.params);
     return { meta: { changes: Number(result.changes) } };
   }
+
+  // D1's batch returns one result per statement, with `results` for queries and
+  // `meta.changes` for writes. node:sqlite cannot report both at once for a
+  // write, so pick the shape by statement kind.
+  execute(): D1Result {
+    const isQuery = /^\s*(select|with|pragma|explain)\b/i.test(this.sql);
+    if (isQuery) return { ...this.all(), meta: { changes: 0 } };
+    return { results: [], ...this.run() };
+  }
 }
 
 export class D1Mock {
   private readonly db: DatabaseSync;
 
   // applyMigrations=false yields an empty database so a test can exercise the
-  // setup/migration runner end-to-end from a blank slate.
-  constructor(applyMigrations = true) {
+  // setup/migration runner end-to-end from a blank slate. `prefix` applies the
+  // same migrations under a TABLE_PREFIX (e.g. 'hop' → hop_waker_executions).
+  constructor(applyMigrations = true, prefix = '') {
     this.db = new DatabaseSync(':memory:');
     if (applyMigrations) {
-      for (const migration of getMigrations('')) {
+      for (const migration of getMigrations(prefix)) {
         this.db.exec(migration.sql);
       }
     }
@@ -101,7 +112,7 @@ export class D1Mock {
   }
 
   batch(statements: D1Statement[]): D1Result[] {
-    return statements.map((s) => s.all());
+    return statements.map((s) => s.execute());
   }
 
   exec(sql: string): void {

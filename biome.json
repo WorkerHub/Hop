@@ -7,7 +7,11 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!apps/web/src/styles/globals.css"]
+    "includes": [
+      "**",
+      "!apps/web/src/styles/globals.css",
+      "!apps/worker/src/waker"
+    ]
   },
   "formatter": {
     "enabled": true,

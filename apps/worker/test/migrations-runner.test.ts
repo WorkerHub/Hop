@@ -57,6 +57,7 @@ test('runMigrations 返回实际生效前缀（未配置 → hop）', async () =
     [
       ['schema_v1', 'applied'],
       ['schema_v2', 'applied'],
+      ['schema_v3', 'applied'],
     ],
   );
 });
@@ -105,7 +106,7 @@ test('前缀一致时不误报：prefixed schema + 同名前缀正常迁移', as
   assert.equal(result.prefix, 'sl');
   assert.deepEqual(
     result.migrations.map((m) => m.status),
-    ['skipped', 'skipped'],
+    ['skipped', 'skipped', 'skipped'],
   );
 });
 
@@ -118,7 +119,7 @@ test('前缀一致时不误报：unprefixed schema + 显式空前缀正常迁移
   assert.equal(result.prefix, '');
   assert.deepEqual(
     result.migrations.map((m) => m.status),
-    ['skipped', 'skipped'],
+    ['skipped', 'skipped', 'skipped'],
   );
 });
 
@@ -141,7 +142,7 @@ test('回归：共享库他表 bare users + Hop 已有前缀 → 增量放行不
   assert.equal(result.prefix, 'SL');
   assert.deepEqual(
     result.migrations.map((m) => m.status),
-    ['skipped', 'skipped'],
+    ['skipped', 'skipped', 'skipped'],
   );
 });
 
@@ -162,6 +163,7 @@ test('回归：共享库他表（ZETA_*/eNotify_*）+ 显式空前缀 → 不误
     [
       ['schema_v1', 'applied'],
       ['schema_v2', 'applied'],
+      ['schema_v3', 'applied'],
     ],
   );
 });
@@ -183,6 +185,7 @@ test('回归：仅外来 d1_migrations（别家文件名）+ prefix=SL → 不�
     [
       ['schema_v1', 'applied'],
       ['schema_v2', 'applied'],
+      ['schema_v3', 'applied'],
     ],
   );
   assert.deepEqual(
@@ -190,7 +193,7 @@ test('回归：仅外来 d1_migrations（别家文件名）+ prefix=SL → 不�
       .prepare('SELECT name FROM _SL_schema_migrations ORDER BY name')
       .all<{ name: string }>()
       .results.map((r) => r.name),
-    ['schema_v1', 'schema_v2'],
+    ['schema_v1', 'schema_v2', 'schema_v3'],
   );
 });
 

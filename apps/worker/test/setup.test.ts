@@ -109,6 +109,7 @@ test('POST /api/setup: 正确 JSON 密钥把迁移应用到空库并返回结果
     [
       ['schema_v1', 'applied'],
       ['schema_v2', 'applied'],
+      ['schema_v3', 'applied'],
     ],
   );
 });
@@ -299,7 +300,7 @@ test('POST /api/admin/setup: 管理员执行同一迁移逻辑并写审计日志
   const body = await res.json();
   assert.deepEqual(
     body.migrations.map((m: { status: string }) => m.status),
-    ['skipped', 'skipped'],
+    ['skipped', 'skipped', 'skipped'],
   );
 
   const row = ctx.db
@@ -311,7 +312,7 @@ test('POST /api/admin/setup: 管理员执行同一迁移逻辑并写审计日志
   assert.equal(row?.target_id, 'setup');
   assert.deepEqual(JSON.parse(row?.details ?? '{}'), {
     applied: 0,
-    skipped: 2,
+    skipped: 3,
     error: 0,
   });
 });
