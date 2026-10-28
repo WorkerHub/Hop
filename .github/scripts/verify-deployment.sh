@@ -8,12 +8,16 @@
 #
 # Env: WRANGLER_OUTPUT_FILE_PATH — the ND-JSON file `wrangler deploy` wrote
 #      TABLE_PREFIX              — resolved prefix ('' means explicit no prefix)
+#      WAKER_SIGNING_KEY_EXPECTED — 'bound' when the repository Secret existed and
+#                                  was injected into the secrets file, 'absent'
+#                                  otherwise. Required: 'bound' asserts the key is
+#                                  really bound on the uploaded version (a callback
+#                                  without it only fails at 03:00 with 500
+#                                  signing_key_missing); 'absent' just records that
+#                                  the receiver fails closed. No mode variable.
 #      WORKER_NAME               — optional, Worker name for the version lookup
 #                                  (default 'hop', the name in wrangler.toml)
-#      WAKER_MODE / WAKER_TRIGGERS — resolved deploy mode; waker+remove must leave
-#                                  no cron schedule, every other mode exactly one
-#                                  `0 3 * * *` schedule. CLOUDFLARE_API_TOKEN is
-#                                  needed for the schedules lookup.
+#      CLOUDFLARE_API_TOKEN      — needed for the schedules lookup.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,14 +45,25 @@ worker_name="${WORKER_NAME:-hop}"
 secrets_view="$(pnpm exec wrangler versions view "$version" --name "$worker_name" --json)"
 # Don't turn an unexpected API response into a silent pass.
 jq -e --arg v "$version" '.id == $v and (.resources.bindings | type == "array")' <<<"$secrets_view" >/dev/null
-# WAKER_SIGNING_KEY is required exactly when this deploy ran in waker mode: a
-# callback version without it answers 500 signing_key_missing to every
-# execution, which only shows up at 03:00. Cron-mode deploys do not inject it.
+# WAKER_SIGNING_KEY is the only switch of the callback and is mode-free: when the
+# repository Secret exists the secrets file carries it, so the uploaded version
+# must have the binding; otherwise the callback fails closed (500
+# signing_key_missing) and nothing is required. There is no mode any more, so the
+# rest of the required list is static.
 required_secrets="JWT_SECRET SETUP_SECRET TOTP_ENCRYPTION_KEY"
-if [[ "${WAKER_MODE:-cron}" == "waker" ]]; then
-  required_secrets="${required_secrets} WAKER_SIGNING_KEY"
-  echo "Waker mode: callback receiver enabled; WAKER_SIGNING_KEY must be bound"
-fi
+case "${WAKER_SIGNING_KEY_EXPECTED:-}" in
+  bound)
+    required_secrets="${required_secrets} WAKER_SIGNING_KEY"
+    echo "Waker callback: WAKER_SIGNING_KEY configured — it must be bound on the version"
+    ;;
+  absent)
+    echo "Waker callback: no WAKER_SIGNING_KEY configured — /_waker/execute fails closed (500 signing_key_missing)"
+    ;;
+  *)
+    echo "::error::WAKER_SIGNING_KEY_EXPECTED must be 'bound' or 'absent' (got '${WAKER_SIGNING_KEY_EXPECTED:-<unset>}'); cannot verify the waker callback state."
+    exit 1
+    ;;
+esac
 missing_secrets="$(jq -r --arg names "$required_secrets" '
   ([.resources.bindings[] | select(.type == "secret_text") | .name]) as $bound
   | ($names | split(" "))
@@ -88,11 +103,11 @@ if [[ "$live" != "$expected" ]]; then
 fi
 echo "TABLE_PREFIX: ${live:-<none>}"
 
-# Cron schedules gate. `wrangler deploy` syncs cron schedules from the config, so
-# this is what actually proves the mode's promise: no schedule at all in waker
-# mode with WAKER_TRIGGERS=remove, exactly `0 3 * * *` otherwise (native cron, or
-# the dual-run transition). The deploy log never shows schedules, so without
-# this gate only a human looking at the dashboard would notice a missed switch.
+# Cron schedules gate. `wrangler deploy` syncs cron schedules from the config,
+# and `[triggers]` is static in wrangler.toml — the pipeline never rewrites it, so
+# the native Cron Trigger must always be there. Moving the schedule to waker alone
+# is a separate change that deletes [triggers]; once merged, this gate fails until
+# it is updated along with that change, which is exactly the review it asks for.
 account_id="$(sed -n 's/^account_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' wrangler.toml | head -n 1)"
 if [[ -z "$account_id" ]]; then
   echo "::error::Cannot read account_id from wrangler.toml; cannot verify cron schedules."
@@ -111,16 +126,8 @@ if ! jq -e '.success == true and (.result.schedules | type == "array")' \
   exit 1
 fi
 crons="$(jq -r '[.result.schedules[].cron] | sort | join(" ")' <<<"$schedules")"
-if [[ "${WAKER_MODE:-cron}" == "waker" && "${WAKER_TRIGGERS:-keep}" == "remove" ]]; then
-  if [[ -n "$crons" ]]; then
-    echo "::error::Worker ${worker_name} still has cron schedule(s) '${crons}', but WAKER_MODE=waker + WAKER_TRIGGERS=remove promises none. Re-run the deploy after the [triggers] removal, or delete the schedule in the dashboard."
-    exit 1
-  fi
-  echo "Cron schedules: none (waker is the only scheduler)"
-else
-  if [[ "$crons" != "0 3 * * *" ]]; then
-    echo "::error::Worker ${worker_name} has cron schedule(s) '${crons:-<none>}', expected exactly '0 3 * * *' (WAKER_MODE=${WAKER_MODE:-cron}, WAKER_TRIGGERS=${WAKER_TRIGGERS:-keep}). The native Cron Trigger must stay in this mode."
-    exit 1
-  fi
-  echo "Cron schedules: 0 3 * * *"
+if [[ "$crons" != "0 3 * * *" ]]; then
+  echo "::error::Worker ${worker_name} has cron schedule(s) '${crons:-<none>}', expected exactly '0 3 * * *'. The native Cron Trigger lives in wrangler.toml's static [triggers] section and must stay deployed (waker is a parallel trigger, not a replacement, until [triggers] is removed in a dedicated change)."
+  exit 1
 fi
+echo "Cron schedules: 0 3 * * *"

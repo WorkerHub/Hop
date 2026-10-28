@@ -8,10 +8,6 @@ keep_vars = true
 # TABLE_PREFIX is config-managed: CI replaces this placeholder with the
 # resolved GitHub variable vars.TABLE_PREFIX before wrangler uploads the
 # version, so the binding always matches the prefix the migrations used.
-#
-# WAKER_MODE / WAKER_URL are also written here by the deploy workflow
-# (.github/scripts/configure-waker-mode.mjs) when the optional waker scheduling
-# mode is enabled — do not add them by hand (see the README's waker section).
 [vars]
 TABLE_PREFIX = "TABLE_PREFIX_PLACEHOLDER"
 
@@ -32,8 +28,10 @@ binding = "LINKS_KV"
 id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
 [triggers]
-# Native Cron Trigger — the default scheduler. The deploy workflow removes this
-# entire section when WAKER_MODE=waker and WAKER_TRIGGERS=remove (the waker
-# platform then calls /_waker/execute instead). Keep the expression
-# character-for-character: the waker job is created with the same value.
+# Native Cron Trigger — static: this section is always deployed and the pipeline
+# never rewrites it. The waker callback runs next to it (dual run, the cleanup is
+# idempotent) as soon as its signing key is bound; switching the schedule over to
+# waker alone is a separate, reviewable change that deletes this section (revert
+# that commit to roll back). Keep the expression character-for-character: the
+# waker job is created with the same value.
 crons = ["0 3 * * *"]

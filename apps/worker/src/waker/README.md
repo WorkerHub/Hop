@@ -18,7 +18,10 @@
    （`cp client/src/*.ts hop/apps/worker/src/waker/`），并把上面表格的版本与 commit 一起更新。
 2. 升级时必须对照 waker 的冻结契约测试（`tests/client.test.ts` 断言 SDK 与平台逐项一致）确认版本；
    协议常量（签名规范串、头名、时间窗、`/_waker` 路径）漂移会让回调静默失败。
-3. hop 侧只用它的模式判定（`isWakerEnabled` / `readEnvString` / `WAKER_URL_ENV`）、receiver
-   （`createWakerReceiver`）与 D1 幂等账本（`createD1ExecutionLedger`）；业务接线在
-   `src/services/waker.ts`，挂载在 `src/routes/waker.ts`。注册客户端（`client.ts`）在 hop 里
-   不使用——注册路线是「用户在 waker 管理面手动建项目与任务一次」（见 README 的双模式部署说明）。
+3. hop 侧只用它的 receiver（`createWakerReceiver`，验签／幂等／错误码全在 SDK 内）、
+   D1 幂等账本（`createD1ExecutionLedger`）与协议常量（`CALLBACK_MOUNT_PATH`）；业务接线在
+   `src/services/waker.ts`，挂载在 `src/routes/waker.ts`。启停**只认 signing key 绑定**
+   （`WAKER_SIGNING_KEY`）：有 key 则验签后执行，无 key 由 SDK fail closed 回 500
+   `signing_key_missing`——hop 侧不读 `modes.ts` 的模式判定（hop 没有任何模式变量；该文件属于上游
+   逐字拷贝，保留但不引用），`client.ts` 的注册客户端在 hop 里也不使用：注册路线是「用户在 waker
+   管理面手动建项目与任务」（见 README 的 waker 说明）。

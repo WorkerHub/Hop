@@ -1,13 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalPassThroughEnv": [
-    "TABLE_PREFIX",
-    "WAKER_MODE",
-    "WAKER_URL",
-    "WAKER_TRIGGERS",
-    "WRANGLER_TOML",
-    "GITHUB_OUTPUT"
-  ],
+  "globalPassThroughEnv": ["TABLE_PREFIX", "WRANGLER_TOML", "GITHUB_OUTPUT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

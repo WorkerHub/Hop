@@ -23,14 +23,9 @@ TOTP_ENCRYPTION_KEY=
 SETUP_SECRET=
 
 # ─── Optional waker integration ───────────────────────────────────────────────
-# Default is the native Cron Trigger: leave WAKER_MODE unset (or set "cron") and
-# /_waker/execute answers 404. To try the callback locally, set all three:
-#   WAKER_MODE=waker
-#   WAKER_URL=http://localhost:8788        (any plain http(s) URL; it closes the
-#                                           receiver when empty and labels logs)
-#   WAKER_SIGNING_KEY=...                  (a locally generated test key — never
-#                                           the production one; missing key makes
-#                                           the callback fail closed with 500)
-# WAKER_MODE=
-# WAKER_URL=
+# The native Cron Trigger is the default and always on. The waker callback is
+# switched by the signing key alone: with WAKER_SIGNING_KEY set here, a locally
+# signed POST to /_waker/execute verifies and runs the same cleanup; without it
+# the callback fails closed with 500 signing_key_missing. Use a locally generated
+# test key — never the production one.
 # WAKER_SIGNING_KEY=
