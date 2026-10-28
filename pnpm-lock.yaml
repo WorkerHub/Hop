@@ -100,7 +100,7 @@ importers:
         specifier: ^13.0.0
         version: 13.3.3
       hono:
-        specifier: ^4.6.12
+        specifier: ^4.13.14
         version: 4.13.14
       jose:
         specifier: ^6.0.0

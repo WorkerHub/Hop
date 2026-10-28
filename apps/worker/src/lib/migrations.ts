@@ -159,6 +159,28 @@ CREATE INDEX IF NOT EXISTS idx_totp_used_at ON ${t('totp_used')}(used_at);
 ALTER TABLE ${t('users')} ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
 `,
     },
+    {
+      // executionId deduplication for waker callbacks (waker migration contract,
+      // schema_v3). Columns match the waker client SDK's executionLedgerDdl()
+      // one-for-one, but the SQL is frozen here as a literal: a merged
+      // migration can never change, even if the SDK's DDL does later.
+      // Hop's own ledger only — the shared database's other projects' tables
+      // are never touched.
+      name: 'schema_v3',
+      fileName: '0003_waker_executions.sql',
+      sql: `
+CREATE TABLE IF NOT EXISTS ${t('waker_executions')} (
+  execution_id   TEXT PRIMARY KEY,
+  job_id         TEXT NOT NULL,
+  job_name       TEXT NOT NULL,
+  scheduled_for  INTEGER NOT NULL,
+  status         TEXT NOT NULL,
+  response_json  TEXT,
+  claimed_at     INTEGER NOT NULL,
+  completed_at   INTEGER
+);
+`,
+    },
   ];
 }
 

@@ -215,6 +215,7 @@ test('无前缀：保留 Wrangler 迁移路径及重复执行行为', (t) => {
   assert.deepEqual(f.query('SELECT name FROM d1_migrations ORDER BY name')[0], [
     { name: '0001_init.sql' },
     { name: '0002_token_version.sql' },
+    { name: '0003_waker_executions.sql' },
   ]);
   assert.match(f.script('d1-prepare-migrations.sh', ''), /already tracked/);
   assert.match(
@@ -233,18 +234,19 @@ test('无前缀：保留 Wrangler 迁移路径及重复执行行为', (t) => {
 
 test('无前缀：setup 历史可 baseline 为 Wrangler 历史', (t) => {
   const f = fixture(t);
-  f.setup('', ['schema_v1', 'schema_v2']);
+  f.setup('', ['schema_v1', 'schema_v2', 'schema_v3']);
   assert.match(f.script('d1-prepare-migrations.sh', ''), /Baselining/);
   assert.deepEqual(f.query('SELECT name FROM d1_migrations ORDER BY name')[0], [
     { name: '0001_init.sql' },
     { name: '0002_token_version.sql' },
+    { name: '0003_waker_executions.sql' },
   ]);
 });
 
 test('有前缀且已全部执行：只打印空计划，仅执行 SELECT，共享库不变', (t) => {
   const f = fixture(t);
   const before = f.shared();
-  f.setup('SL', ['schema_v1', 'schema_v2']);
+  f.setup('SL', ['schema_v1', 'schema_v2', 'schema_v3']);
   assert.match(f.script('d1-prepare-migrations.sh', 'SL'), /prefixed/);
   // Bash trace 核对脚本实际调用的每条 D1 SQL，不能只比较最终数据。
   const trace = f.run(
@@ -268,7 +270,7 @@ test('有前缀且已全部执行：只打印空计划，仅执行 SELECT，共�
   assert.deepEqual(f.foreignSnapshot(), before);
 });
 
-test('有前缀且有待执行迁移：仅应用 v2，保留其他应用的表、索引和数据', (t) => {
+test('有前缀且有待执行迁移：仅应用 v2、v3，保留其他应用的表、索引和数据', (t) => {
   const f = fixture(t);
   const before = f.shared();
   f.setup('SL', ['schema_v1']);
@@ -276,11 +278,11 @@ test('有前缀且有待执行迁移：仅应用 v2，保留其他应用的表�
     VALUES ('sl@example.com','sl-user','hash')`);
   assert.match(
     f.script('d1-prefixed-migrations.sh', 'SL'),
-    /Planned migrations: schema_v2\n/,
+    /Planned migrations: schema_v2 schema_v3\n/,
   );
   assert.deepEqual(
     f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
-    [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+    [{ name: 'schema_v1' }, { name: 'schema_v2' }, { name: 'schema_v3' }],
   );
   f.assertOwnIndexes('SL');
   assert.deepEqual(f.query('SELECT email,token_version FROM SL_users')[0], [
@@ -298,12 +300,12 @@ test('有前缀的新安装：只创建本应用的表，共享库保持不变',
   const before = f.shared();
   assert.match(
     f.script('d1-prefixed-migrations.sh', 'SL'),
-    /Planned migrations: schema_v1 schema_v2/,
+    /Planned migrations: schema_v1 schema_v2 schema_v3/,
   );
   assert.deepEqual(f.foreignSnapshot(), before);
   assert.deepEqual(
     f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
-    [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+    [{ name: 'schema_v1' }, { name: 'schema_v2' }, { name: 'schema_v3' }],
   );
   f.assertOwnIndexes('SL');
 });
@@ -331,7 +333,7 @@ test('已知限制：别的应用占用同名索引时，本应用索引会被�
   f.query('CREATE INDEX idx_links_slug ON ZETA_links(slug)');
   assert.match(
     f.script('d1-prefixed-migrations.sh', 'SL'),
-    /Planned migrations: schema_v1 schema_v2/,
+    /Planned migrations: schema_v1 schema_v2 schema_v3/,
   );
   assert.throws(() => f.assertOwnIndexes('SL'), /Expected values/);
 });
@@ -361,7 +363,7 @@ test('防静默切换：库中已有 prefixed schema + 显式空前缀 → 中�
 test('回归：共享库他表 + Hop 已有 SL 前缀 → 增量迁移放行，不误杀', (t) => {
   const f = fixture(t);
   const before = f.shared(); // 他应用：bare users + ZETA_*
-  f.setup('SL', ['schema_v1', 'schema_v2']);
+  f.setup('SL', ['schema_v1', 'schema_v2', 'schema_v3']);
   assert.match(f.script('d1-prepare-migrations.sh', 'SL'), /prefixed/);
   assert.match(
     f.script('d1-prefixed-migrations.sh', 'SL'),
@@ -396,11 +398,11 @@ test('回归：仅外来 d1_migrations（别家文件名）+ SL 表全删 → �
   assert.match(f.outputs(), /mode=prefixed/);
   assert.match(
     f.script('d1-prefixed-migrations.sh', 'SL'),
-    /Planned migrations: schema_v1 schema_v2\n/,
+    /Planned migrations: schema_v1 schema_v2 schema_v3\n/,
   );
   assert.deepEqual(
     f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
-    [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+    [{ name: 'schema_v1' }, { name: 'schema_v2' }, { name: 'schema_v3' }],
   );
   f.assertOwnIndexes('SL');
   assert.deepEqual(f.foreignSnapshot(), before);
@@ -485,7 +487,7 @@ for (const scenario of [
     assert.doesNotMatch(output, /::error::/);
     assert.deepEqual(
       f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
-      [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+      [{ name: 'schema_v1' }, { name: 'schema_v2' }, { name: 'schema_v3' }],
     );
     f.assertOwnIndexes('SL');
     assert.deepEqual(f.foreignSnapshot(), before);
@@ -534,7 +536,7 @@ for (const scenario of [
     assert.match(run(), /Deployed Worker uses TABLE_PREFIX=SL/);
     assert.deepEqual(
       f.query('SELECT name FROM _SL_schema_migrations ORDER BY name')[0],
-      [{ name: 'schema_v1' }, { name: 'schema_v2' }],
+      [{ name: 'schema_v1' }, { name: 'schema_v2' }, { name: 'schema_v3' }],
     );
     f.assertOwnIndexes('SL');
     assert.deepEqual(f.foreignSnapshot(), before);
