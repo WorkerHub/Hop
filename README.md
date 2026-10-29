@@ -195,32 +195,35 @@ Navigate to your deployed URL and register — the first account is automaticall
 
 ---
 
-## Optional: also schedule with waker (dual run)
+## Nightly cleanup: scheduled by waker
 
-Hop's nightly cleanup (expired `verifications` rows, plus `totp_used` rows older than 90 s) runs
-on the Cloudflare Cron Trigger `0 3 * * *` declared in `apps/worker/wrangler.toml`. A deployment
-can also let [waker](https://github.com/WorkerHub/waker) deliver the same job over HTTP: the
-platform POSTs `/_waker/execute`, which runs the **same** cleanup function as `scheduled()`.
+Hop's nightly cleanup (expired `verifications` rows, plus `totp_used` rows older than 90 s) is
+delivered by [waker](https://github.com/WorkerHub/waker): the platform POSTs `/_waker/execute`,
+which runs the **same** cleanup function as the `scheduled()` handler. The Worker deploys no native
+Cron Trigger — waker is the only scheduler.
 
 There is nothing to switch on: one input decides everything — the signing key.
 
 | `WAKER_SIGNING_KEY` | `/_waker/execute` | Native Cron Trigger | State |
 |---|---|---|---|
-| Secret absent (or empty) | 500 `signing_key_missing` (JSON) | `0 3 * * *` | fail closed — nothing unverified ever runs |
-| Secret present | signature verified, then the cleanup runs | `0 3 * * *` | dual run; the cleanup is idempotent |
+| Secret absent (or empty) | 500 `signing_key_missing` (JSON) | none | fail closed — and since nothing else schedules the job, the cleanup does not run at all |
+| Secret present | signature verified, then the cleanup runs | none | waker alone drives the nightly cleanup |
 
-`[triggers]` is static: it lives in `apps/worker/wrangler.toml` and the pipeline never rewrites it,
-so the native trigger is deployed in both states. There is no mode variable, platform URL or
-schedule switch to configure — the deployment variables from the earlier dual-mode design are gone;
-if your repository still has them, they are ignored and can be deleted. Any path under `/_waker`
-that is not routed answers JSON (404 or the SDK's stable error code) — never the SPA's 200 HTML,
-which waker would read as a successful run.
+`apps/worker/wrangler.toml` declares `[triggers]` with `crons = []`, and that empty array is what
+removes the native trigger: Cloudflare deletes all Cron Triggers only when `crons` is empty — with
+the property undefined (an absent section) the already-deployed schedule would stay in place and
+the Worker would keep a second, unmanaged nightly cleanup. The deployment workflow verifies the
+result after every deploy (`Cron schedules: <none>`; a leftover schedule fails the run). There is
+no mode variable, platform URL or schedule switch to configure — the deployment variables from the
+earlier dual-mode design are gone; if your repository still has them, they are ignored and can be
+deleted. Any path under `/_waker` that is not routed answers JSON (404 or the SDK's stable error
+code) — never the SPA's 200 HTML, which waker would read as a successful run.
 
 ### The only input: `WAKER_SIGNING_KEY`
 
 | Secret | Required | Source | Description |
 |---|---|---|---|
-| `WAKER_SIGNING_KEY` | No | GitHub Secret → CI | The hop project's callback signing key, shown **once** when the project is created in the waker UI. When the Secret exists the deploy injects it through `--secrets-file`; when it does not, the deploy still succeeds and the callback answers 500 `signing_key_missing` instead of running an unverified job. Never logged, never committed. |
+| `WAKER_SIGNING_KEY` | No | GitHub Secret → CI | The hop project's callback signing key, shown **once** when the project is created in the waker UI. When the Secret exists the deploy injects it through `--secrets-file` and the callback verifies and runs the cleanup; when it does not, the deploy still succeeds and the callback answers 500 `signing_key_missing` instead of running an unverified job — with no native trigger left, nothing runs the cleanup in that state. Never logged, never committed. |
 
 ### Create the waker job (once, in the waker UI)
 
@@ -237,26 +240,29 @@ job — these values are frozen, copy them verbatim (the job name must match the
 | `maxRetries` / `backoffSeconds` | `2` / `60` |
 | `timeoutSeconds` / `jitterSeconds` | `30` / `0` |
 
-### Dual run, switching to waker alone, and rolling back
+### Setting it up, checking it, and rolling back
 
 1. Create the `hop` project in waker (callback URL = this Worker's public base URL) and store the
    signing key it shows once as the GitHub Secret `WAKER_SIGNING_KEY` (same path as the other
-   runtime secrets — never in the repository). Deploy: the receiver is live next to the Cron
-   Trigger — the dual-run state, harmless because the cleanup is idempotent.
+   runtime secrets — never in the repository). Deploy: the receiver goes live with it.
 2. Create and enable the `nightly-cleanup` job in waker, then watch one full daily cycle:
    waker's executions list shows a success, and the Worker log has
-   `"event":"nightly_cleanup","source":"waker"` with the delete counts and duration.
-3. Switch over in a separate, small change: delete the `[triggers]` section from
-   `apps/worker/wrangler.toml` and merge it on its own. waker is then the only scheduler; nothing
-   else has to change.
+   `"event":"nightly_cleanup","source":"waker"` with the delete counts and duration. With the
+   native trigger gone, only `source: "waker"` entries appear from then on.
+3. Check the switch took effect: the deploy's Verify step prints `Cron schedules: <none>`,
+   `GET /accounts/{account_id}/workers/scripts/hop/schedules` returns an empty list, and the
+   Worker's Triggers tab in the dashboard lists no Cron Trigger.
 
-Rollback: revert that commit (the `[triggers]` section comes back) and redeploy — the Cron Trigger
-is back, and waker can keep delivering in parallel or be paused in its UI. No database rollback is
-needed: `schema_v3` only adds `{prefix}waker_executions`, which nothing else reads.
+Rollback: put the expression back in `apps/worker/wrangler.toml`
+(`[triggers] crons = ["0 3 * * *"]`) and redeploy — `wrangler deploy` replaces the deployed
+schedules with the config, so the native trigger returns, and waker can keep delivering in
+parallel or be paused in its UI. No database rollback is needed: `schema_v3` only adds
+`{prefix}waker_executions`, which nothing else reads.
 
-To close the callback instead, delete the Worker's `WAKER_SIGNING_KEY` secret in the dashboard (the
-deploy only ever adds secrets, it never removes one): `/_waker/execute` then answers 500
-`signing_key_missing`. Leaving the key bound is harmless as long as the waker job is paused.
+To close the callback instead, pause or delete the `nightly-cleanup` job in the waker UI first —
+having deleted the Worker's `WAKER_SIGNING_KEY` secret in the dashboard (the deploy only ever adds
+secrets, it never removes one) `/_waker/execute` answers 500 `signing_key_missing`, and with no
+native trigger left that stops the cleanup completely.
 
 Cleanup results are logged as structured JSON (`nightly_cleanup` with counts, duration and the
 trigger source; rejected callbacks as `waker_callback_rejected` with the HTTP status and the
@@ -403,7 +409,7 @@ GET /:slug  →  302 to destination URL
 | `JWT_SECRET` | Secret | Yes | GitHub Secret → CI | HS256 signing key, ≥ 32 chars |
 | `TOTP_ENCRYPTION_KEY` | Secret | Yes | GitHub Secret → CI | Hex string from `openssl rand -hex 32` |
 | `SETUP_SECRET` | Secret | Yes | GitHub Secret → CI | Secret path for triggering DB migrations via HTTP |
-| `WAKER_SIGNING_KEY` | Secret | No | GitHub Secret → CI | The hop project's callback signing key, shown once when the project is created in waker. Present → the deploy injects it and `/_waker/execute` verifies and runs the cleanup; absent → the deploy still succeeds and the callback answers 500 `signing_key_missing`. See [Optional: also schedule with waker](#optional-also-schedule-with-waker-dual-run). Never logged or committed. |
+| `WAKER_SIGNING_KEY` | Secret | No | GitHub Secret → CI | The hop project's callback signing key, shown once when the project is created in waker. Present → the deploy injects it and `/_waker/execute` verifies and runs the cleanup; absent → the deploy still succeeds and the callback answers 500 `signing_key_missing`. See [Nightly cleanup: scheduled by waker](#nightly-cleanup-scheduled-by-waker). Never logged or committed. |
 
 ---
 

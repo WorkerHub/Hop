@@ -142,7 +142,8 @@ jobs:
       # does not, the deploy still succeeds and /_waker/execute fails closed with
       # 500 signing_key_missing. The resolved state is handed to the verify step
       # so a version that was supposed to carry the key cannot silently ship
-      # without it.
+      # without it. Waker delivers the nightly cleanup, so an absent key means
+      # that nothing runs it — the verify step warns about exactly that.
       - name: Write secrets file
         id: secrets
         env:
@@ -169,12 +170,12 @@ jobs:
             };
             // The signing key is the only switch of the callback: injected when
             // the repository Secret exists, otherwise the callback answers 500
-            // signing_key_missing and the native Cron Trigger is unaffected.
+            // signing_key_missing and nothing schedules the nightly cleanup.
             const key = (process.env.WAKER_SIGNING_KEY ?? "").trim();
             if (key.length > 0) {
               secrets.WAKER_SIGNING_KEY = key;
             } else {
-              console.warn("WAKER_SIGNING_KEY is not configured — /_waker/execute will answer 500 signing_key_missing until it is set; the native Cron Trigger is unaffected.");
+              console.warn("WAKER_SIGNING_KEY is not configured — /_waker/execute will answer 500 signing_key_missing until it is set, and nothing else schedules the nightly cleanup.");
             }
             fs.writeFileSync(
               file,

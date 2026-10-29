@@ -123,13 +123,15 @@ app.all('/api/*', (c) => {
   return apiError(c, 404, 'NOT_FOUND', 'Not found');
 });
 
-// ─── waker callback (optional second trigger, dual run) ───────────────────────
+// ─── waker callback (the scheduler) ──────────────────────────────────────────
 // Registered before the short-link route and the SPA fallback so the whole
 // /_waker prefix is decided here. The sub-app hands POST /_waker/execute to the
 // SDK receiver; whether it actually runs is decided by one thing only — the
 // signing key binding (present: verify + run the same cleanup as scheduled();
 // absent: 500 signing_key_missing). Every path under the prefix answers JSON,
 // never the SPA's 200 HTML, which waker would mistake for a successful run.
+// This is the only scheduler: wrangler.toml declares `[triggers] crons = []`,
+// which removes the native Cron Trigger on every deploy.
 app.all(CALLBACK_MOUNT_PATH, (c) => {
   return apiError(c, 404, 'NOT_FOUND', 'Not found');
 });
@@ -176,9 +178,12 @@ export { app };
 export default {
   fetch: app.fetch,
 
-  // L-2: Nightly cleanup of expired rows (native Cron Trigger "0 3 * * *",
-  // static in wrangler.toml; the waker callback runs the same runCleanup through
-  // /_waker/execute while its signing key is bound — the dual-run state).
+  // L-2: Nightly cleanup of expired rows. The schedule is delivered by waker
+  // (POST /_waker/execute → the same runCleanup), and wrangler.toml declares
+  // `[triggers] crons = []`, so no native Cron Trigger is deployed. The handler
+  // stays exported on purpose: restoring `crons = ["0 3 * * *"]` and
+  // redeploying brings the native path back without touching code (the rollback
+  // documented in the README).
   async scheduled(
     _event: ScheduledController,
     env: Env,

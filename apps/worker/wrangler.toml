@@ -28,10 +28,14 @@ binding = "LINKS_KV"
 id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
 [triggers]
-# Native Cron Trigger — static: this section is always deployed and the pipeline
-# never rewrites it. The waker callback runs next to it (dual run, the cleanup is
-# idempotent) as soon as its signing key is bound; switching the schedule over to
-# waker alone is a separate, reviewable change that deletes this section (revert
-# that commit to roll back). Keep the expression character-for-character: the
-# waker job is created with the same value.
-crons = ["0 3 * * *"]
+# Native Cron Trigger disabled — waker is the only scheduler now: it POSTs
+# /_waker/execute for the `nightly-cleanup` job declared in
+# src/services/waker.ts and created by hand in the waker UI.
+#
+# The empty array is what removes it, on every deploy: Cloudflare deletes all
+# Cron Triggers when `crons` is an empty array, but leaves the deployed ones in
+# place when `triggers`/`crons` is undefined (i.e. deleting this section would
+# keep the old schedule running). Keeping it explicit also makes the state
+# idempotent and reviewable. Rollback: restore the previous expression (see the
+# README's waker section) and redeploy — the native trigger returns.
+crons = []

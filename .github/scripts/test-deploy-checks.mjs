@@ -282,14 +282,14 @@ for (const scenario of [
     ok: true,
   },
   {
-    // 原生 Cron Trigger 丢了等于清理停摆，必须失败（与 key 无关）。
-    name: 'schedules 为空 → 必须失败',
+    // 原生 Cron Trigger 还在 = 仍是双跑，切换没生效，必须失败（与 key 无关）。
+    name: '仍残留原生 cron 0 3 * * * → 必须失败',
     version: 'uploaded',
     percentage: 100,
     prefix: 'hop',
     env: 'hop',
-    schedulesEmpty: true,
-    expectError: "expected exactly '0 3 \\* \\* \\*'",
+    schedulesLeftover: true,
+    expectError: 'expected no cron schedules',
     ok: false,
   },
 ]) {
@@ -325,9 +325,9 @@ esac
       join(f.dir, 'wrangler.toml'),
       'name = "hop"\naccount_id = "0123456789abcdef0123456789abcdef"\n',
     );
-    const schedulesBody = scenario.schedulesEmpty
-      ? '{"success":true,"result":{"schedules":[]}}'
-      : '{"success":true,"result":{"schedules":[{"cron":"0 3 * * *"}]}}';
+    const schedulesBody = scenario.schedulesLeftover
+      ? '{"success":true,"result":{"schedules":[{"cron":"0 3 * * *"}]}}'
+      : '{"success":true,"result":{"schedules":[]}}';
     writeFileSync(
       join(f.dir, 'curl'),
       `#!/bin/sh
@@ -366,7 +366,7 @@ printf '%s\\n' '${schedulesBody}'
           /no WAKER_SIGNING_KEY configured — .*fails closed/,
         );
       }
-      assert.match(stdout, /Cron schedules: 0 3 \* \* \*/);
+      assert.match(stdout, /Cron schedules: <none>/);
     } else {
       let thrown = null;
       try {
@@ -512,9 +512,10 @@ for (const scenario of [
       toml,
       new RegExp(`^TABLE_PREFIX = "${scenario.expected}"$`, 'm'),
     );
-    // 部署产物仍带 [triggers]：原生 Cron Trigger 静态保留，流水线不摘它。
+    // 部署产物里 [triggers] crons = []：每次部署都清掉原生 Cron Trigger。
     assert.match(toml, /^\[triggers\]$/m);
-    assert.match(toml, /^crons = \["0 3 \* \* \*"\]$/m);
+    assert.match(toml, /^crons = \[\]$/m);
+    assert.doesNotMatch(toml, /0 3 \* \* \*/);
     // 残留检查（Inject 步的 grep）通过：所有占位符都已替换。
     assert.doesNotMatch(toml, /_PLACEHOLDER/);
   });
