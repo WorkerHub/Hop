@@ -176,30 +176,32 @@ curl -X POST https://your-worker.workers.dev/api/setup \
 
 ---
 
-## 可选：同时用 waker 调度（双跑）
+## 夜间清理：由 waker 独驱动
 
 hop 的每日清理（过期 `verifications` 行 + 超过 90 秒的 `totp_used` 行）由
-`apps/worker/wrangler.toml` 里的 Cloudflare Cron Trigger `0 3 * * *` 驱动。部署也可以让
-[waker](https://github.com/WorkerHub/waker) 通过 HTTP 投递同一份任务：平台回调
-`POST /_waker/execute`，执行的是与 `scheduled()` **同一个**清理函数。
+[waker](https://github.com/WorkerHub/waker) 投递：平台回调 `POST /_waker/execute`，执行的是与
+`scheduled()` **同一个**清理函数。Worker **不再部署原生 Cron Trigger**——waker 是唯一的调度源。
 
 没有开关要配，只认一把签名密钥：
 
 | `WAKER_SIGNING_KEY` | `/_waker/execute` | 原生 Cron Trigger | 状态 |
 |---|---|---|---|
-| 未配置（或为空） | 500 `signing_key_missing`（JSON） | `0 3 * * *` | fail closed —— 绝不执行未验签的任务 |
-| 已配置 | 验签通过后执行清理 | `0 3 * * *` | 双跑；清理天然幂等 |
+| 未配置（或为空） | 500 `signing_key_missing`（JSON） | 无 | fail closed —— 且因为再没有别的调度源，清理根本不会跑 |
+| 已配置 | 验签通过后执行清理 | 无 | 夜间清理由 waker 独驱动 |
 
-`[triggers]` 是静态的：它写在 `apps/worker/wrangler.toml` 里、流水线从不改写，所以两种状态下
-原生 Cron Trigger 都会部署。没有模式变量、没有平台地址、没有调度开关要配——旧版双模式的那些部署
-变量已经删除，仓库里若还留着也会被代码忽略，可以一并删掉。`/_waker` 下任何未挂载的路径都回 JSON
-（404 或 SDK 的稳定错误码），永远不会落到 SPA 的 200 HTML（否则平台会把「没跑」当成「跑成功」）。
+`apps/worker/wrangler.toml` 里声明的是 `[triggers]` + `crons = []`，这个空数组才是移除动作：
+Cloudflare 只在 `crons` 为空数组时删掉全部 Cron Trigger；属性为 undefined（即整段删掉）时已部署的
+调度会**原样留着**，Worker 就会继续跑第二份不受管理的夜间清理。每次部署后流水线都会核对结果
+（`Cron schedules: <none>`；仍读到调度则部署失败）。没有模式变量、没有平台地址、没有调度开关要配
+——旧版双模式的那些部署变量已经删除，仓库里若还留着也会被代码忽略，可以一并删掉。`/_waker` 下
+任何未挂载的路径都回 JSON（404 或 SDK 的稳定错误码），永远不会落到 SPA 的 200 HTML（否则平台会把
+「没跑」当成「跑成功」）。
 
 ### 唯一的输入：`WAKER_SIGNING_KEY`
 
 | 密钥 | 必填 | 来源 | 描述 |
 |---|---|---|---|
-| `WAKER_SIGNING_KEY` | 否 | GitHub Secret → CI | hop 项目的回调签名密钥，在 waker 管理面建项目时**一次性**展示。仓库里有这个 Secret 时，部署经 `--secrets-file` 注入；没有时部署照样成功，只是回调回 500 `signing_key_missing`，绝不执行未验签的任务。永不进日志、永不进仓库。 |
+| `WAKER_SIGNING_KEY` | 否 | GitHub Secret → CI | hop 项目的回调签名密钥，在 waker 管理面建项目时**一次性**展示。仓库里有这个 Secret 时，部署经 `--secrets-file` 注入，回调验签后执行清理；没有时部署照样成功，只是回调回 500 `signing_key_missing`，绝不执行未验签的任务——而原生 Cron Trigger 已经没有了，这个状态下清理不会跑。永不进日志、永不进仓库。 |
 
 ### 在 waker 管理面建任务（一次）
 
@@ -216,22 +218,26 @@ hop 的每日清理（过期 `verifications` 行 + 超过 90 秒的 `totp_used` 
 | `maxRetries` / `backoffSeconds` | `2` / `60` |
 | `timeoutSeconds` / `jitterSeconds` | `30` / `0` |
 
-### 双跑、切到只跑 waker、以及回滚
+### 接上、核对、以及回滚
 
 1. 在 waker 建 `hop` 项目（回调地址填本 Worker 的公网根地址），把一次性展示的 signing key
    存进 GitHub Secret `WAKER_SIGNING_KEY`（与现有运行时密钥同路，绝不进仓库）后部署：receiver
-   就此上线，Cron Trigger 继续跑——这就是双跑态，清理幂等，重复执行无副作用。
+   就此上线。
 2. 在 waker 建并启用 `nightly-cleanup` 任务，观察一个完整日周期：waker 的执行记录有成功条目，
-   Worker 日志出现 `"event":"nightly_cleanup","source":"waker"` 及删除计数与耗时。
-3. 切换放在单独一个小变更里：删除 `apps/worker/wrangler.toml` 的 `[triggers]` 段，单独提 PR 合并。
-   之后 waker 是唯一调度源，其余什么都不用改。
+   Worker 日志出现 `"event":"nightly_cleanup","source":"waker"` 及删除计数与耗时。原生触发已移除，
+   此后只会出现 `source: "waker"` 的记录。
+3. 核对切换已生效：部署的 Verify 步输出 `Cron schedules: <none>`，
+   `GET /accounts/{account_id}/workers/scripts/hop/schedules` 返回空列表，控制台该 Worker 的
+   Triggers 下也没有 Cron Trigger。
 
-回滚：还原那个提交（`[triggers]` 段回来）重新部署即可——Cron Trigger 恢复，waker 可以继续并行
-投递，也可以在管理面停用任务。数据库无需回滚：`schema_v3` 只加法创建 `{prefix}waker_executions`，
-没有别的代码读它。
+回滚：把表达式写回 `apps/worker/wrangler.toml`（`[triggers] crons = ["0 3 * * *"]`）重新部署即可
+——`wrangler deploy` 会用配置替换已部署的调度，原生触发恢复，waker 可以继续并行投递，也可以在
+管理面停用任务。数据库无需回滚：`schema_v3` 只加法创建 `{prefix}waker_executions`，没有别的代码
+读它。
 
-若只想关掉回调：在控制台删掉 Worker 的 `WAKER_SIGNING_KEY` 密钥（部署只会新增密钥、从不删除），
-`/_waker/execute` 随后回 500 `signing_key_missing`；任务已停用时留着这把密钥也无影响。
+若只想关掉回调：先在 waker 管理面停用或删除 `nightly-cleanup` 任务——在控制台删掉 Worker 的
+`WAKER_SIGNING_KEY` 密钥后（部署只会新增密钥、从不删除），`/_waker/execute` 回 500
+`signing_key_missing`；原生触发已经没有了，这个阶段清理就是完全停的。
 
 清理结果以结构化 JSON 记录（`nightly_cleanup` 含计数、耗时与触发来源；被拒回调记
 `waker_callback_rejected`，含 HTTP 状态与 SDK 错误码，如 `invalid_signature`、
@@ -376,7 +382,7 @@ GET /:slug  →  302 跳转到目标 URL
 | `JWT_SECRET` | 密钥 | 是 | GitHub Secret → CI | HS256 签名密钥，≥ 32 字符 |
 | `TOTP_ENCRYPTION_KEY` | 密钥 | 是 | GitHub Secret → CI | 来自 `openssl rand -hex 32` 的十六进制字符串 |
 | `SETUP_SECRET` | 密钥 | 是 | GitHub Secret → CI | 通过 HTTP 触发数据库迁移的密钥路径 |
-| `WAKER_SIGNING_KEY` | 密钥 | 否 | GitHub Secret → CI | hop 项目的回调签名密钥，建项目时一次性展示。有值 → 部署注入，`/_waker/execute` 验签后执行清理；无值 → 部署照常成功，回调回 500 `signing_key_missing`。见 [可选：同时用 waker 调度](#可选同时用-waker-调度双跑)。不进日志、不进仓库。 |
+| `WAKER_SIGNING_KEY` | 密钥 | 否 | GitHub Secret → CI | hop 项目的回调签名密钥，建项目时一次性展示。有值 → 部署注入，`/_waker/execute` 验签后执行清理；无值 → 部署照常成功，回调回 500 `signing_key_missing`。见 [夜间清理：由 waker 独驱动](#夜间清理由-waker-独驱动)。不进日志、不进仓库。 |
 
 ---
 

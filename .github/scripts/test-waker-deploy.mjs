@@ -1,5 +1,6 @@
-// Static invariants of the simplified waker wiring: the scheduling config is
-// static, the signing key is the only switch, and no deployment variable from
+// Static invariants of the simplified waker wiring: waker is the only scheduler
+// (wrangler.toml declares `crons = []` so every deploy clears the native Cron
+// Trigger), the signing key is the only switch, and no deployment variable from
 // the old dual-mode design survived anywhere in the pipeline.
 //
 // Run from the repository root:
@@ -39,18 +40,24 @@ function pipelineFiles(dir = join(repoRoot, '.github')) {
   return files;
 }
 
-// ─── [triggers] is static: the native Cron Trigger is always deployed ────────
+// ─── native cron removed: waker is the only scheduler ────────────────────────
 
-test('wrangler.toml 的 [triggers] 静态保留，全仓唯一 cron 表达式仍是 0 3 * * *', () => {
+test('wrangler.toml 声明 [triggers] crons = []，唯一调度在 waker', () => {
   assert.match(wranglerToml, /^\[triggers\]$/m);
-  assert.match(wranglerToml, /^crons = \["0 3 \* \* \*"\]$/m);
+  // 空数组才会删掉已部署的 Cron Trigger；整段删除会让旧调度原样跑着。
+  assert.match(wranglerToml, /^crons = \[\]$/m);
   assert.equal(
     (wranglerToml.match(/^crons\s*=/gm) ?? []).length,
     1,
     '只允许一条 crons 声明',
   );
+  assert.doesNotMatch(
+    wranglerToml,
+    /0 3 \* \* \*/,
+    'wrangler.toml 不得再声明任何 cron 表达式',
+  );
 
-  // 任务名与表达式与 waker 管理面注册的参数逐字一致。
+  // 全仓唯一的调度声明：任务名与表达式与 waker 管理面注册的参数逐字一致。
   const service = read('apps', 'worker', 'src', 'services', 'waker.ts');
   assert.match(service, /WAKER_JOB_CRON = '0 3 \* \* \*'/);
   assert.match(service, /WAKER_JOB_NIGHTLY_CLEANUP = 'nightly-cleanup'/);
@@ -150,12 +157,17 @@ test('deploy.yml：secrets 文件步可选注入 key，并把解析状态交给 
   assert.ok(at('Deploy') < at('Verify deployment'));
 });
 
-test('verify-deployment.sh：无模式变量，cron 排期恒为 0 3 * * *', () => {
+test('verify-deployment.sh：无模式变量，排期闸门要求零 cron', () => {
   assert.doesNotMatch(verifyScript, /WAKER_MODE|WAKER_TRIGGERS/);
   assert.match(verifyScript, /WAKER_SIGNING_KEY_EXPECTED/);
   assert.match(
     verifyScript,
-    /expected exactly '0 3 \* \* \*'/,
-    '排期闸门必须要求原生 Cron Trigger 在场',
+    /expected no cron schedules/,
+    '排期闸门必须要求原生 Cron Trigger 已移除（waker 是唯一调度）',
+  );
+  assert.doesNotMatch(
+    verifyScript,
+    /expected exactly '0 3/,
+    '闸门不得再要求 0 3 * * * 在场',
   );
 });

@@ -15,9 +15,15 @@
 #                                  without it only fails at 03:00 with 500
 #                                  signing_key_missing); 'absent' just records that
 #                                  the receiver fails closed. No mode variable.
+#                                  Waker is the only scheduler now, so 'absent' also
+#                                  warns that no cleanup runs at all.
 #      WORKER_NAME               — optional, Worker name for the version lookup
 #                                  (default 'hop', the name in wrangler.toml)
 #      CLOUDFLARE_API_TOKEN      — needed for the schedules lookup.
+#
+# The last gate asserts the Worker carries no native Cron Trigger at all: since
+# the switch, waker delivers the nightly cleanup over HTTP and the native
+# schedule must be gone (wrangler.toml declares `crons = []`).
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +64,7 @@ case "${WAKER_SIGNING_KEY_EXPECTED:-}" in
     ;;
   absent)
     echo "Waker callback: no WAKER_SIGNING_KEY configured — /_waker/execute fails closed (500 signing_key_missing)"
+    echo "::warning::Waker is the only scheduler and no WAKER_SIGNING_KEY is configured: the nightly cleanup will NOT run at all until the GitHub Secret exists and a deployment injects it."
     ;;
   *)
     echo "::error::WAKER_SIGNING_KEY_EXPECTED must be 'bound' or 'absent' (got '${WAKER_SIGNING_KEY_EXPECTED:-<unset>}'); cannot verify the waker callback state."
@@ -103,11 +110,12 @@ if [[ "$live" != "$expected" ]]; then
 fi
 echo "TABLE_PREFIX: ${live:-<none>}"
 
-# Cron schedules gate. `wrangler deploy` syncs cron schedules from the config,
-# and `[triggers]` is static in wrangler.toml — the pipeline never rewrites it, so
-# the native Cron Trigger must always be there. Moving the schedule to waker alone
-# is a separate change that deletes [triggers]; once merged, this gate fails until
-# it is updated along with that change, which is exactly the review it asks for.
+# Cron schedules gate: none may remain. `wrangler deploy` replaces the deployed
+# schedules with those in the config, and `[triggers] crons = []` in wrangler.toml
+# therefore removes the native Cron Trigger on every deploy (an absent section
+# would leave the already-deployed schedule in place). Waker is the only
+# scheduler, so a leftover schedule means the switch did not take effect and the
+# Worker would keep running a second, unmanaged nightly cleanup.
 account_id="$(sed -n 's/^account_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' wrangler.toml | head -n 1)"
 if [[ -z "$account_id" ]]; then
   echo "::error::Cannot read account_id from wrangler.toml; cannot verify cron schedules."
@@ -126,8 +134,8 @@ if ! jq -e '.success == true and (.result.schedules | type == "array")' \
   exit 1
 fi
 crons="$(jq -r '[.result.schedules[].cron] | sort | join(" ")' <<<"$schedules")"
-if [[ "$crons" != "0 3 * * *" ]]; then
-  echo "::error::Worker ${worker_name} has cron schedule(s) '${crons:-<none>}', expected exactly '0 3 * * *'. The native Cron Trigger lives in wrangler.toml's static [triggers] section and must stay deployed (waker is a parallel trigger, not a replacement, until [triggers] is removed in a dedicated change)."
+if [[ -n "$crons" ]]; then
+  echo "::error::Worker ${worker_name} still has cron schedule(s) '${crons}', expected no cron schedules. Waker is the only scheduler now and wrangler.toml declares [triggers] crons = [] so every deploy removes the native Cron Trigger. Remove the leftover schedule (dashboard → Triggers → delete the Cron Trigger, or PUT /accounts/${account_id}/workers/scripts/${worker_name}/schedules with an empty array) and re-run the deploy."
   exit 1
 fi
-echo "Cron schedules: 0 3 * * *"
+echo "Cron schedules: <none>"

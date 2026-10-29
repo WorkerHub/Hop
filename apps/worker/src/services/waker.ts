@@ -26,10 +26,11 @@ import { runCleanup } from './cleanup.js';
 export const WAKER_JOB_NIGHTLY_CLEANUP = 'nightly-cleanup';
 
 /**
- * The declarative cron expression, character-for-character what
- * apps/worker/wrangler.toml declares for the native trigger (CF dialect, UTC).
- * The waker job is created by hand with this expression, so it is also the
- * value to copy there; nothing in hop rewrites it.
+ * The declarative cron expression of the nightly cleanup — the only schedule hop
+ * has left. The job is created by hand in the waker UI with this value (CF cron
+ * dialect, UTC), so it is also what the README's job table freezes; nothing in
+ * hop rewrites it. wrangler.toml declares `[triggers] crons = []`, which removes
+ * the native Cron Trigger on every deploy — waker is the only scheduler.
  */
 export const WAKER_JOB_CRON = '0 3 * * *';
 

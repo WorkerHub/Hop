@@ -22,10 +22,11 @@ JWT_SECRET=
 TOTP_ENCRYPTION_KEY=
 SETUP_SECRET=
 
-# ─── Optional waker integration ───────────────────────────────────────────────
-# The native Cron Trigger is the default and always on. The waker callback is
-# switched by the signing key alone: with WAKER_SIGNING_KEY set here, a locally
-# signed POST to /_waker/execute verifies and runs the same cleanup; without it
-# the callback fails closed with 500 signing_key_missing. Use a locally generated
-# test key — never the production one.
+# ─── Waker integration (the nightly cleanup's only scheduler) ─────────────────
+# Production scheduling is delivered by waker (POST /_waker/execute); the Worker
+# no longer deploys a native Cron Trigger, so nothing fires the cleanup on a
+# timer here either. The callback is switched by the signing key alone: with
+# WAKER_SIGNING_KEY set, a locally signed POST to /_waker/execute verifies and
+# runs the same cleanup; without it the callback fails closed with 500
+# signing_key_missing. Use a locally generated test key — never the production one.
 # WAKER_SIGNING_KEY=
