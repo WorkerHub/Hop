@@ -4,6 +4,16 @@
 
 A self-hosted URL shortener built entirely on Cloudflare's platform. No servers to manage — runs on Workers, D1 (SQLite), and KV.
 
+## Screenshots
+
+<p align="center">
+  <img src="./.github/assets/screenshots/home.webp" alt="Hop dashboard listing short links with their click counts, expiry and status" width="100%">
+</p>
+
+| Analytics | Admin panel |
+| --- | --- |
+| <img src="./.github/assets/screenshots/analytics.webp" alt="Analytics page showing total clicks, top links and a clicks-over-time chart" width="100%"> | <img src="./.github/assets/screenshots/admin.webp" alt="Admin panel listing user accounts with role, two-factor status and active state" width="100%"> |
+
 ## Features
 
 - **Short links** — random 4-char slugs or custom aliases
