@@ -7,12 +7,12 @@
 ## 界面预览
 
 <p align="center">
-  <img src="./.github/assets/screenshots/home.webp" alt="Hop 仪表盘：短链接列表，含点击量、有效期与状态" width="100%">
+  <img src="./.github/assets/imgs/home.webp" alt="Hop 仪表盘：短链接列表，含点击量、有效期与状态" width="100%">
 </p>
 
 | 点击分析 | 管理面板 |
 | --- | --- |
-| <img src="./.github/assets/screenshots/analytics.webp" alt="点击分析页：总点击量、热门链接与点击趋势图" width="100%"> | <img src="./.github/assets/screenshots/admin.webp" alt="管理面板：用户列表，含角色、双因素状态与账号状态" width="100%"> |
+| <img src="./.github/assets/imgs/analytics.webp" alt="点击分析页：总点击量、热门链接与点击趋势图" width="100%"> | <img src="./.github/assets/imgs/admin.webp" alt="管理面板：用户列表，含角色、双因素状态与账号状态" width="100%"> |
 
 ## 功能特性
 
